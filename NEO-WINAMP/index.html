@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RADIO-PAVI — Broadcasting System</title>
+    <meta name="description" content="RADIO-PAVI: Personal radio broadcasting station with live mic, EQ, and visualizer.">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <!-- ======== SPLASH / LOADING SCREEN ======== -->
+    <div id="splash" class="splash">
+        <div class="splash-inner">
+            <div class="splash-logo">
+                <span class="splash-r">RADIO</span><span class="splash-dash">-</span><span class="splash-p">PAVI</span>
+            </div>
+            <div class="splash-sub">BROADCASTING SYSTEM v2026</div>
+            <div class="splash-wave">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <div class="splash-bar"><div class="splash-fill" id="splash-fill"></div></div>
+            <div class="splash-status" id="splash-status">INITIALIZING SYSTEMS...</div>
+        </div>
+    </div>
+
+    <div class="scanline-overlay" id="scanline-overlay"></div>
+    <div id="bg-effect"></div>
+    <div id="ambient-glow"></div>
+
+    <div class="player-container" id="player" style="opacity:0;">
+
+        <!-- ======== MAIN DECK ======== -->
+        <div class="deck main-deck" id="main-deck">
+            <div class="top-bar">
+                <div class="brand">
+                    <span class="logo-icon">&#9835;</span>
+                    <span class="logo-text">RADIO-PAVI</span>
+                    <span class="listener-count admin-only" id="listener-count" style="display:none;">0 OYENTES</span>
+                </div>
+                <div class="top-actions">
+                    <button class="win-btn" id="btn-cfg" title="Customize">&#9881;</button>
+                    <button class="win-btn" id="btn-min" title="Minimize">_</button>
+                    <button class="win-btn win-close" id="btn-close" title="Close">&times;</button>
+                </div>
+            </div>
+
+            <div class="display-area">
+                <div class="crt-scanlines"></div>
+                <div class="display-content">
+                    <div class="time-section">
+                        <span class="seg7 time-bg">88:88</span>
+                        <span class="seg7 time-fg" id="time-display">00:00</span>
+                        <div class="play-indicators">
+                            <span class="ind" id="ind-play">&#9654;</span>
+                            <span class="ind" id="ind-pause">&#10074;&#10074;</span>
+                            <span class="ind ind-air" id="ind-air">AIR</span>
+                        </div>
+                    </div>
+                    <div class="viz-section">
+                        <div class="visualizer-box">
+                            <canvas id="visualizer"></canvas>
+                            <canvas id="neural-overlay"></canvas>
+                        </div>
+                        <div class="format-badges">
+                            <span id="kbps">1411K</span> &middot; <span id="khz">44K</span>
+                            <span class="badge-st" id="net-badge">ST</span>
+                        </div>
+                    </div>
+                    <div class="track-info-bar">
+                        <div class="marquee-wrap">
+                            <span id="track-name" class="marquee-text">RADIO-PAVI SYSTEM READY...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls-row">
+                <div class="transport">
+                    <button class="tbtn" id="btn-prev" title="Previous">&#9198;</button>
+                    <button class="tbtn tbtn-play" id="btn-play" title="Play">&#9654;</button>
+                    <button class="tbtn" id="btn-pause" title="Pause">&#10074;&#10074;</button>
+                    <button class="tbtn" id="btn-stop" title="Stop">&#9632;</button>
+                    <button class="tbtn" id="btn-next" title="Next">&#9197;</button>
+                    <button class="tbtn" id="btn-eject" title="Open File">&#9167;</button>
+                </div>
+                <div class="sliders-col">
+                    <div class="slider-row"><span class="sl-label">VOL</span><input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.8" class="cyber-slider"></div>
+                    <div class="slider-row"><span class="sl-label">BAL</span><input type="range" id="balance-slider" min="-1" max="1" step="0.1" value="0" class="cyber-slider"></div>
+                </div>
+                <div class="toggles-col">
+                    <button class="toggle-btn" id="btn-eq">EQ</button>
+                    <button class="toggle-btn active" id="btn-pl">PL</button>
+                    <button class="toggle-btn" id="btn-shuf">SH</button>
+                    <button class="toggle-btn" id="btn-rep">RP</button>
+                </div>
+            </div>
+
+            <div class="seek-bar">
+                <canvas id="waveform-seek"></canvas>
+                <input type="range" id="progress-slider" min="0" max="100" value="0" step="0.1" class="progress-input">
+            </div>
+            <input type="file" id="file-input" accept="audio/*" multiple style="display:none;">
+        </div>
+
+        <!-- ======== EQ DECK ======== -->
+        <div class="deck eq-deck" id="eq-deck">
+            <div class="deck-label">&#9889; NEURAL EQ v2026</div>
+            <div class="eq-bands" id="eq-bands"></div>
+            <div class="eq-presets">
+                <button class="eq-preset" data-preset="flat">FLAT</button>
+                <button class="eq-preset" data-preset="bass">BASS+</button>
+                <button class="eq-preset" data-preset="rock">ROCK</button>
+                <button class="eq-preset" data-preset="electronic">SYNTH</button>
+                <button class="eq-preset" data-preset="vocal">VOCAL</button>
+            </div>
+        </div>
+
+        <!-- ======== SKIN EDITOR DECK ======== -->
+        <div class="deck cfg-deck" id="cfg-deck">
+            <div class="deck-label">&#9881; SKIN EDITOR</div>
+            <div class="cfg-body">
+                <div class="cfg-group"><div class="cfg-title">THEME</div><div class="swatch-row" id="swatch-row"></div></div>
+                <div class="cfg-group"><div class="cfg-title">VISUALIZER</div>
+                    <div class="cfg-btns" id="viz-modes">
+                        <button class="cfg-opt active" data-viz="bars">BARS</button>
+                        <button class="cfg-opt" data-viz="wave">WAVE</button>
+                        <button class="cfg-opt" data-viz="ring">RING</button>
+                    </div>
+                </div>
+                <div class="cfg-row-pair">
+                    <div class="cfg-group cfg-half"><div class="cfg-title">SCANLINES</div><button class="cfg-switch on" id="cfg-scanlines">ON</button></div>
+                    <div class="cfg-group cfg-half"><div class="cfg-title">GLOW</div><input type="range" id="cfg-glow" min="0" max="100" value="40" class="cyber-slider"></div>
+                </div>
+                <div class="cfg-group"><div class="cfg-title">BACKDROP</div>
+                    <div class="cfg-btns" id="bg-modes">
+                        <button class="cfg-opt active" data-bg="void">VOID</button>
+                        <button class="cfg-opt" data-bg="grid">GRID</button>
+                        <button class="cfg-opt" data-bg="stars">STARS</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======== PLAYLIST DECK ======== -->
+        <div class="deck playlist-deck" id="playlist-deck">
+            <div class="tabs-bar">
+                <button class="tab active" data-target="local">LOCAL MEMORY</button>
+                <button class="tab" data-target="cloud">NET TERMINAL</button>
+                <button class="tab" data-target="broadcast" style="color:var(--amber);">CADENA NACIONAL</button>
+            </div>
+            
+            <!-- LOCAL -->
+            <div class="panel active" id="view-local">
+                <div class="playlist-box" id="drop-zone">
+                    <ul class="playlist" id="playlist"><li class="pl-empty">Drop audio files or click + ADD...</li></ul>
+                </div>
+                <div class="pl-controls">
+                    <button class="pl-btn" id="btn-add">+ ADD</button>
+                    <button class="pl-btn" id="btn-add-folder">+ DIR</button>
+                    <button class="pl-btn" id="btn-rem">- REM</button>
+                    <button class="pl-btn pl-danger" id="btn-clear">CLR</button>
+                    <span class="pl-stats" id="playlist-stats">0 TRACKS</span>
+                </div>
+            </div>
+            <input type="file" id="folder-input" webkitdirectory directory style="display:none;">
+            
+            <!-- CLOUD -->
+            <div class="panel" id="view-cloud" style="display:none;">
+                <div class="url-bar">
+                    <input type="text" id="api-search-input" class="cyber-input" placeholder="Paste audio URL or search term...">
+                    <button id="btn-add-url" class="url-btn">+URL</button>
+                    <button id="btn-api-search" class="url-btn">SCAN</button>
+                </div>
+                <div class="url-status" id="url-status"></div>
+                <div class="playlist-box">
+                    <ul class="playlist" id="api-results"><li class="pl-empty">Paste a direct audio link and press +URL<br>or type a search and press SCAN</li></ul>
+                </div>
+            </div>
+
+            <!-- BROADCAST -->
+            <div class="panel" id="view-broadcast" style="display:none; padding:5px;">
+                 
+                 <!-- LISTENER VIEW -->
+                 <div id="bd-listener">
+                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0;">&#128225; SEÑAL EN VIVO</div>
+                     <p style="font-size:0.55rem; color:#888; margin-bottom:10px;">Sintoniza la transmisión maestra de RADIO-PAVI.</p>
+                     
+                     <div class="url-status" id="tune-status" style="margin-bottom:8px;">ESCANENANDO FRECUENCIAS...</div>
+                     <button class="pl-btn" id="btn-tune-in" style="width:100%; height:35px; background:var(--green); color:#000; font-size:0.7rem; display:none; box-shadow:0 0 10px var(--green-glow);">SINTONIZAR TRANSMISIÓN</button>
+                     
+                     <div style="margin-top:25px; border-top:1px solid #222; padding-top:10px; display:flex; gap:5px; align-items:center;">
+                         <span style="font-size:0.5rem; color:#666;">MODO LOCUTOR:</span>
+                         <input type="password" id="admin-pwd" class="cyber-input" placeholder="Clave..." style="height:18px; width:70px; font-size:0.5rem; padding:0 4px;">
+                         <button class="url-btn" id="btn-login-submit" style="padding:1px 6px; font-size:0.5rem;">AUTH</button>
+                         <span id="login-error" style="color:var(--red); font-size:0.45rem; margin-left:auto;"></span>
+                     </div>
+                 </div>
+
+                 <!-- ADMIN VIEW (Hidden by default) -->
+                 <div id="bd-admin" class="admin-only" style="display:none; flex-direction:column; gap:8px;">
+                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0; color:var(--amber);">&#9819; PANEL DE TRANSMISIÓN</div>
+                     <p style="font-size:0.55rem; color:#888; margin-bottom:5px;">La música local y tu voz están siendo transmitidas en este momento.</p>
+                     
+                     <!-- ON AIR STRIP INLINE -->
+                     <div class="air-strip inner-air" id="air-strip">
+                        <button class="air-btn" id="btn-on-air">
+                            <span class="air-dot" id="air-dot">&#9679;</span>
+                            <span class="air-label" id="air-label">ON AIR</span>
+                        </button>
+                        <div class="air-center">
+                            <div class="air-meter-label">MIC</div>
+                            <div class="air-meter">
+                                <div class="air-meter-fill" id="mic-level"></div>
+                            </div>
+                        </div>
+                        <div class="air-mix">
+                            <span class="air-mix-label">BG</span>
+                            <input type="range" id="duck-slider" min="0" max="50" value="20" step="1" class="cyber-slider air-slider">
+                            <span class="duck-val" id="duck-val">20%</span>
+                        </div>
+                    </div>
+                 </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Hidden audio element to sink WebRTC stream for listeners -->
+    <audio id="listener-audio" style="display:none;" crossOrigin="anonymous"></audio>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
