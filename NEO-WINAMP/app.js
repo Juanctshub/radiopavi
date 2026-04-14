@@ -31,6 +31,8 @@ let recordedChunks = [];
 let isIaLocutor = false;
 let manualTuned = false;
 let chatHistory = [];
+let aiSpeechQueue = [];
+let aiIsTalking = false;
 
 // ON AIR
 let micStream = null, micSource = null, micGain = null, musicGain = null;
@@ -163,10 +165,18 @@ function initAdminPeer() {
             
             initAudio(); // ensure streamDest exists
             if (audioParams.streamDest) {
-                // Wait 500ms for data channel to stabilize before sending bulky media stream (fixes WebRTC race conditions)
+                // Wait 500ms for data channel to stabilize before sending bulky media stream
                 setTimeout(() => {
-                    const call = peer.call(conn.peer, audioParams.streamDest.stream);
-                    connectionObj.call = call;
+                    const activeCalls = p2pConnections.filter(c => c.call && c.call.open);
+                    if (activeCalls.length < 10) {
+                        // Admin handles up to 10 primary streams directly (Root Nodes)
+                        const call = peer.call(conn.peer, audioParams.streamDest.stream);
+                        connectionObj.call = call;
+                    } else {
+                        // MESH CASCADE: Point to a random root node as proxy
+                        const proxyNode = activeCalls[Math.floor(Math.random() * activeCalls.length)];
+                        conn.send({type: 'mesh_delegate', target: proxyNode.conn.peer});
+                    }
                 }, 500);
             }
         });
@@ -176,6 +186,12 @@ function initAdminPeer() {
                 chatHistory.push(data);
                 if(chatHistory.length > 50) chatHistory.shift();
                 appendChat(data.name, data.text, false);
+                
+                // IA Intercept Chat Reading
+                if(isAdmin && isIaLocutor && !data.isHost) {
+                    pushAiSpeech(`En el chat mundial, ${data.name} nos dice: ${data.text}`);
+                }
+                
                 // Re-brodadcast to all other listeners
                 p2pConnections.forEach(c => {
                     try { if(c.conn && c.conn.open && c.conn.peer !== conn.peer) c.conn.send(data); } catch(e){}
@@ -218,6 +234,11 @@ function connectToAdmin() {
         else if(data.type === 'dj_sync') { if(!manualTuned) handleDjSyncRequest(data.active); } // ignore if tuned manually
         else if(data.type === 'tts') playLoquendo(data.text);
         else if(data.type === 'chat') appendChat(data.name, data.text, data.isHost);
+        else if(data.type === 'mesh_delegate') {
+             // Receive Cascade Mesh Signal. Call the Proxy root node instead of Admin.
+             const proxyCall = peer.call(data.target, null);
+             proxyCall.on('stream', remoteStream => { setupSilentStream(remoteStream); });
+        }
         else if(data.type === 'chat_history') {
              if(DOM.chatBox) {
                  DOM.chatBox.innerHTML = '<li style="color:#666; font-style:italic;">-- CHAT MUNDIAL P2P --</li>';
@@ -266,12 +287,18 @@ function initClientPeer() {
     });
 
     peer.on('call', call => {
-        call.answer(); 
+        // Mesh: If a peer calls us as a proxy, we answer by passing our incoming stream along!
+        if (remoteAudioPlayer && remoteAudioPlayer.srcObject) {
+             call.answer(remoteAudioPlayer.srcObject);
+        } else {
+             call.answer(); // Normal dummy answer
+        }
         call.on('stream', remoteStream => {
-            setupSilentStream(remoteStream);
+            setupSilentStream(remoteStream); // Listen to whoever called us
         });
     });
 }
+
 
 let remoteAudioPlayer = null;
 
@@ -294,17 +321,41 @@ function setupSilentStream(stream) {
         globalAnalyser.fftSize = 256;
         source.connect(globalAnalyser);
         // Do NOT connect to destination, remoteAudioPlayer handles audio output directly.
-    } catch(e) { console.error('SilentStream Graph Error:', e); }
+} catch(e) { console.error('SilentStream Graph Error:', e); }
+}
+
+// Suave Crossfading Tool
+function fadeAudioElement(element, targetVol, durationMs) {
+    if(!element) return;
+    const startVol = element.volume;
+    const steps = 20;
+    const stepDuration = durationMs / steps;
+    const volChange = (targetVol - startVol) / steps;
+    let currentStep = 0;
+    if(element.fadeInterval) clearInterval(element.fadeInterval);
+    element.fadeInterval = setInterval(() => {
+        currentStep++;
+        let nextVol = startVol + (volChange * currentStep);
+        if(nextVol > 1.0) nextVol = 1.0;
+        if(nextVol < 0.0) nextVol = 0.0;
+        element.volume = nextVol;
+        if(currentStep >= steps) {
+            clearInterval(element.fadeInterval);
+            element.volume = targetVol;
+        }
+    }, stepDuration);
 }
 
 function handleDjSyncRequest(active) {
     if(active) {
         if(audioParams.isPlaying) pauseAudio();
-        audioParams.audioElement.volume = 0; // Pure override
+        // Fade listener down
+        fadeAudioElement(audioParams.audioElement, 0, 1500);
         if(!isTuningIn) toggleCadenaNacional(true);
         DOM.trackName.textContent = '🔊 DJ SYNC (Alta Fidelidad)';
     } else {
-        audioParams.audioElement.volume = preCadenaVolume; // Restore
+        // Restore listener smoothly
+        fadeAudioElement(audioParams.audioElement, preCadenaVolume, 2000);
         if(isTuningIn && !isOnAir) toggleCadenaNacional(false);
     }
 }
@@ -315,10 +366,10 @@ function toggleCadenaNacional(active) {
         if(listenerAudioCtx && listenerAudioCtx.state === 'suspended') listenerAudioCtx.resume();
         
         preCadenaVolume = audioParams.audioElement.volume;
-        audioParams.audioElement.volume = isDjSync ? 0 : 0.1; // Duck local player
+        fadeAudioElement(audioParams.audioElement, isDjSync ? 0 : 0.1, 1000); // Duck local player
         
         if(remoteAudioPlayer) {
-            remoteAudioPlayer.volume = 1.0;
+            fadeAudioElement(remoteAudioPlayer, 1.0, 1000); // Fade remote in
             remoteAudioPlayer.play().catch(e=>console.log(e));
         }
         
@@ -329,8 +380,8 @@ function toggleCadenaNacional(active) {
         startVisualizer();
         DOM.player.style.boxShadow = '0 0 40px rgba(255,0,0,0.3)';
     } else {
-        audioParams.audioElement.volume = preCadenaVolume;
-        if(remoteAudioPlayer) remoteAudioPlayer.volume = 0;
+        fadeAudioElement(audioParams.audioElement, preCadenaVolume, 1000);
+        if(remoteAudioPlayer) fadeAudioElement(remoteAudioPlayer, 0, 1000);
         
         document.getElementById('net-badge').textContent = 'ST';
         const c = audioParams.audioElement.currentTime;
@@ -344,6 +395,28 @@ function toggleCadenaNacional(active) {
     }
 }
 
+function pushAiSpeech(text, cb = null) {
+    aiSpeechQueue.push({text, cb});
+    processAiQueue();
+}
+
+function processAiQueue() {
+    if(!isAdmin || aiIsTalking || aiSpeechQueue.length === 0) return;
+    if(!isIaLocutor) {
+        aiSpeechQueue = [];
+        return;
+    }
+    aiIsTalking = true;
+    const task = aiSpeechQueue.shift();
+    
+    playLoquendo(task.text, () => {
+        aiIsTalking = false;
+        if(task.cb) task.cb();
+        setTimeout(processAiQueue, 500);
+    });
+    p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'tts', text: task.text}); }catch(e){} });
+}
+
 function playLoquendo(text, onEndCallback = null) {
     if(!window.speechSynthesis) {
         if(onEndCallback) onEndCallback();
@@ -352,14 +425,14 @@ function playLoquendo(text, onEndCallback = null) {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'es-ES';
     utterance.rate = 1.0;
-    utterance.pitch = 0.9; // Loquendo-ish
+    utterance.pitch = 0.9;
     
     utterance.onstart = () => {
         preCadenaVolume = audioParams.audioElement.volume;
-        audioParams.audioElement.volume = 0.1;
+        fadeAudioElement(audioParams.audioElement, 0.1, 500);
     };
     utterance.onend = () => {
-        audioParams.audioElement.volume = preCadenaVolume;
+        fadeAudioElement(audioParams.audioElement, preCadenaVolume, 800);
         if(onEndCallback) onEndCallback();
     };
     
@@ -549,13 +622,12 @@ function setupEvents() {
                 const nextTrack = playlist[nextIndex].name.replace('.mp3','').toUpperCase();
                 
                 const promptBlock = DOM.iaPrompt ? DOM.iaPrompt.value.trim() : '';
-                const script = `${promptBlock ? promptBlock + ', ' : ''} Acabamos de escuchar ${prevTrack}. Prepárate porque sigue el temazo: ${nextTrack}.`;
+                const script = `${promptBlock ? promptBlock + '. ' : ''} Acabamos de disfrutar ${prevTrack}. Prepárate porque sigue el temazo: ${nextTrack}.`;
                 
-                playLoquendo(script, () => {
+                pushAiSpeech(script, () => {
                     loadTrack(nextIndex);
                     playAudio();
                 });
-                p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'tts', text: script}); }catch(e){} });
                 return;
             }
             
@@ -696,15 +768,26 @@ function loadTrack(index){
         audioParams.audioElement.volume=parseFloat(DOM.volSlider.value)||0.8;
         playAudio();
     };
-    if(audioParams.isPlaying){let f=setInterval(()=>{if(audioParams.audioElement.volume>0.05){audioParams.audioElement.volume=Math.max(0,audioParams.audioElement.volume-0.05);}else{clearInterval(f);audioParams.audioElement.pause();apply();}},25);}else{apply();}
+    if(audioParams.isPlaying){fadeAudioElement(audioParams.audioElement, 0, 500); setTimeout(()=>{audioParams.audioElement.pause();apply();}, 500);}else{apply();}
 }
 
 function playAudio(){
-    initAudio();
-    audioParams.audioContext.resume().then(()=>{
-        audioParams.audioElement.play().then(()=>{audioParams.isPlaying=true;updateTransportUI('play');startVisualizer();}).catch(e=>console.error('Play:',e));
-    });
+    if(currentIndex===-1&&playlist.length>0)loadTrack(0);
+    if(currentIndex===-1)return;
+    if(!audioParams.source)initAudio();
+    audioParams.audioContext.resume();
+    audioParams.audioElement.play();
+    audioParams.isPlaying=true;
+    updateTransportUI('play');
+    startVisualizer();
+    
+    // Auto-DJ Sync Enforcement for Host Playing
+    if(isAdmin) {
+        p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'dj_sync', active: true}); }catch(e){} });
+        p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'metadata', track: playlist[currentIndex].name}); }catch(e){} });
+    }
 }
+
 function pauseAudio(){if(!audioParams.isPlaying)return;audioParams.audioElement.pause();audioParams.isPlaying=false;updateTransportUI('pause');}
 function stopAudio(){audioParams.audioElement.pause();audioParams.audioElement.currentTime=0;audioParams.isPlaying=false;updateTransportUI('stop');drawIdleScreen();setBroadcastTrackName('RADIO-PAVI >> COMPLETED');}
 function updateTransportUI(state){
