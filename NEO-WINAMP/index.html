@@ -217,11 +217,8 @@
                     <p style="font-size:0.55rem; color:#888; margin-bottom:10px;">Estás enlazado a la matriz. Tu música
                         será interrumpida si hay un aviso oficial de Cadena Nacional.</p>
 
-                    <div class="url-status success" id="tune-status" style="margin-bottom:8px;">ESCANENANDO MATRIZ...
-                    </div>
-                    <button class="win-btn" id="btn-manual-tune"
-                        style="width:100%; margin-bottom:10px; display:none; background:var(--green); color:#000; font-weight:bold;">🎧
-                        SINTONIZAR EMISORA</button>
+                    <div class="url-status loading" id="tune-status" style="margin-bottom:8px;">ESCANENANDO MATRIZ...</div>
+                    <button class="win-btn flash" id="btn-manual-tune" style="width:100%; margin-bottom:15px; padding: 10px; background:var(--green); color:#000; font-weight:bold; font-size: 0.7rem; border-radius: 4px; box-shadow: 0 0 10px var(--green-glow);">🎧 SINTONIZAR EMISORA</button>
 
                     <div
                         style="margin-top:25px; border-top:1px solid #222; padding-top:10px; display:flex; gap:5px; align-items:center;">
@@ -311,19 +308,15 @@
             </div>
 
             <!-- CHAT / INTERCOM -->
-            <div class="panel" id="view-intercom"
-                style="display:none; padding:5px; flex-direction:column; height:200px;">
-                <ul id="chat-box"
-                    style="flex:1; background:#ffffff; border:1px solid #333; margin:0 0 5px 0; overflow-y:auto; list-style:none; padding:5px; font-size:0.6rem; color:#000000; font-family:var(--mono); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);">
-                    <li style="color:#666; font-style:italic;">-- CHAT MUNDIAL P2P --</li>
-                </ul>
-                <div style="display:flex; gap:5px;">
-                    <input type="text" id="chat-name" class="cyber-input" placeholder="Alias..."
-                        style="width:70px; background:#fff; color:#000;">
-                    <input type="text" id="chat-input" class="cyber-input" placeholder="Escribe aquí..."
-                        style="flex:1; background:#fff; color:#000;">
-                    <button class="url-btn" id="btn-chat-send" style="padding:0 8px; font-weight:bold;">ENVIAR</button>
-                </div>
+            <div class="panel" id="view-intercom" style="display:none; padding:8px; flex-direction:column; height:250px;">
+                 <ul id="chat-box" style="flex:1; background:#000; border:1px solid #333; margin:0 0 8px 0; overflow-y:auto; list-style:none; padding:8px; display:flex; flex-direction:column; gap:6px; box-shadow: inset 0 0 15px rgba(0,255,255,0.1); border-radius:4px;">
+                    <li style="color:#666; font-style:italic; font-size:0.55rem; text-align:center;">-- ENLACE CHAT P2P --</li>
+                 </ul>
+                 <div style="display:flex; gap:5px;">
+                     <input type="text" id="chat-name" class="cyber-input" placeholder="Alias..." style="width:80px;">
+                     <input type="text" id="chat-input" class="cyber-input" placeholder="Comando local..." style="flex:1;">
+                     <button class="url-btn" id="btn-chat-send" style="padding:0 15px; font-weight:bold; background:var(--cyan); color:#000;">TX</button>
+                 </div>
             </div>
 
         </div>

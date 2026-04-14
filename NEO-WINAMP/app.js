@@ -462,8 +462,24 @@ function sendChatMsg() {
 function appendChat(name, text, isHost) {
     if (!DOM.chatBox) return;
     const li = document.createElement('li');
-    li.style.marginBottom = '4px';
-    li.innerHTML = `<strong style="color:${isHost ? 'var(--red)' : 'var(--blue)'}">[${name}]</strong>: ${text}`;
+    li.style.width = '100%';
+    li.style.display = 'flex';
+    li.style.flexDirection = 'column';
+    li.style.alignItems = isHost ? 'flex-end' : 'flex-start';
+    
+    const bubble = document.createElement('div');
+    bubble.style.maxWidth = '85%';
+    bubble.style.padding = '6px 10px';
+    bubble.style.borderRadius = '5px';
+    bubble.style.fontSize = '0.6rem';
+    bubble.style.wordWrap = 'break-word';
+    bubble.style.background = isHost ? 'rgba(255, 0, 0, 0.15)' : 'rgba(0, 255, 255, 0.1)';
+    bubble.style.borderLeft = isHost ? 'none' : '3px solid var(--cyan)';
+    bubble.style.borderRight = isHost ? '3px solid var(--red)' : 'none';
+    
+    bubble.innerHTML = `<span style="font-weight:bold; color:${isHost ? 'var(--red)' : 'var(--cyan)'}; font-size:0.55rem; display:block; margin-bottom:2px;">${name}</span> <span style="color:#fff;">${text}</span>`;
+    
+    li.appendChild(bubble);
     DOM.chatBox.appendChild(li);
     DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
 }
