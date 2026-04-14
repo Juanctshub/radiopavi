@@ -231,9 +231,7 @@ function connectToAdmin() {
     });
 
     adminDataConn.on('data', data => {
-        if (data.type === 'cadena_nacional') { if (!manualTuned) toggleCadenaNacional(data.active); else if (manualTuned && data.active) toggleCadenaNacional(true); } // force ON AIR even if tuned
-        else if (data.type === 'dj_sync') { if (!manualTuned) handleDjSyncRequest(data.active); } // ignore if tuned manually
-        else if (data.type === 'tts') playLoquendo(data.text);
+        if (data.type === 'tts') playLoquendo(data.text);
         else if (data.type === 'chat') appendChat(data.name, data.text, data.isHost);
         else if (data.type === 'mesh_delegate') {
             // Receive Cascade Mesh Signal. Call the Proxy root node instead of Admin.
@@ -289,8 +287,8 @@ function initClientPeer() {
 
     peer.on('call', call => {
         // Mesh: If a peer calls us as a proxy, we answer by passing our incoming stream along!
-        if (remoteAudioPlayer && remoteAudioPlayer.srcObject) {
-            call.answer(remoteAudioPlayer.srcObject);
+        if (remoteAudioElement && remoteAudioElement.srcObject) {
+            call.answer(remoteAudioElement.srcObject);
         } else {
             call.answer(); // Normal dummy answer
         }
@@ -301,33 +299,73 @@ function initClientPeer() {
 }
 
 
-let remoteAudioPlayer = null;
+let remoteAudioElement = null;
+let listenerMasterGain = null;
 
 function setupSilentStream(stream) {
-    if (!remoteAudioPlayer) {
-        remoteAudioPlayer = new Audio();
-        remoteAudioPlayer.autoplay = true;
-        // Keep it out of DOM, just a memory element
+    if (!remoteAudioElement) {
+        remoteAudioElement = new Audio();
+        remoteAudioElement.autoplay = true;
     }
-    remoteAudioPlayer.srcObject = stream;
-    remoteAudioPlayer.volume = isTuningIn ? 1.0 : 0; // Silent until Cadena Nacional
-    remoteAudioPlayer.play().catch(e => console.log('Autoplay deferred'));
+    remoteAudioElement.srcObject = stream;
+    remoteAudioElement.volume = 0; // Essential for dummy element
+    remoteAudioElement.play().catch(e => console.log('Autoplay deferred'));
 
     if (!listenerAudioCtx) {
         listenerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    if (listenerMasterGain) { try { listenerMasterGain.disconnect(); } catch (e) { } }
+    
     try {
         const source = listenerAudioCtx.createMediaStreamSource(stream);
+        
+        // NOSTALGIC RADIO EQ & DISTORTION
+        const bandpass = listenerAudioCtx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.value = 1600; // Telephone/Radio focus
+        bandpass.Q.value = 1.0;
+        
+        const distortion = listenerAudioCtx.createWaveShaper();
+        const curve = new Float32Array(400);
+        for (let i = 0; i < 400; ++i) {
+            const x = i * 2 / 400 - 1;
+            curve[i] = (3 + 12) * x * 20 * (Math.PI / 180) / (Math.PI + 12 * Math.abs(x));
+        }
+        distortion.curve = curve;
+        distortion.oversample = '4x';
+        
+        const lowpass = listenerAudioCtx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 3500;
+        
+        listenerMasterGain = listenerAudioCtx.createGain();
+        listenerMasterGain.gain.value = isTuningIn ? 1.0 : 0.0;
+        
         globalAnalyser = listenerAudioCtx.createAnalyser();
         globalAnalyser.fftSize = 256;
-        source.connect(globalAnalyser);
-        // Do NOT connect to destination, remoteAudioPlayer handles audio output directly.
+        
+        source.connect(bandpass);
+        bandpass.connect(distortion);
+        distortion.connect(lowpass);
+        lowpass.connect(listenerMasterGain);
+        listenerMasterGain.connect(globalAnalyser);
+        globalAnalyser.connect(listenerAudioCtx.destination);
     } catch (e) { console.error('SilentStream Graph Error:', e); }
 }
 
 // Suave Crossfading Tool
 function fadeAudioElement(element, targetVol, durationMs) {
     if (!element) return;
+    
+    // Support native WebAudio GainNodes for Nostalgic Stream
+    if (element instanceof GainNode) {
+        const now = element.context.currentTime;
+        element.gain.cancelScheduledValues(now);
+        element.gain.setValueAtTime(element.gain.value, now);
+        element.gain.linearRampToValueAtTime(targetVol, now + (durationMs / 1000));
+        return;
+    }
+    
     const startVol = element.volume;
     const steps = 20;
     const stepDuration = durationMs / steps;
@@ -369,9 +407,9 @@ function toggleCadenaNacional(active) {
         preCadenaVolume = audioParams.audioElement.volume;
         fadeAudioElement(audioParams.audioElement, isDjSync ? 0 : 0.1, 1000); // Duck local player
 
-        if (remoteAudioPlayer) {
-            fadeAudioElement(remoteAudioPlayer, 1.0, 1000); // Fade remote in
-            remoteAudioPlayer.play().catch(e => console.log(e));
+        if (listenerMasterGain) {
+            fadeAudioElement(listenerMasterGain, 1.0, 1000); // Fade remote analog in
+            remoteAudioElement.play().catch(e => console.log(e));
         }
 
         document.getElementById('net-badge').textContent = 'NET';
@@ -382,7 +420,7 @@ function toggleCadenaNacional(active) {
         DOM.player.style.boxShadow = '0 0 40px rgba(255,0,0,0.3)';
     } else {
         fadeAudioElement(audioParams.audioElement, preCadenaVolume, 1000);
-        if (remoteAudioPlayer) fadeAudioElement(remoteAudioPlayer, 0, 1000);
+        if (listenerMasterGain) fadeAudioElement(listenerMasterGain, 0, 1000);
 
         document.getElementById('net-badge').textContent = 'ST';
         const c = audioParams.audioElement.currentTime;
