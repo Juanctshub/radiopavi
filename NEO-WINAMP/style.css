@@ -30,23 +30,7 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--mono);background:var(--bg);color:#ccc;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;padding:28px 0 40px;overflow-x:hidden;overflow-y:auto;}
 
-/* ═══════════ ROLE MODALS ═══════════ */
-.modal-overlay {position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:200000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);}
-.modal-box {background:var(--screen);border:2px solid var(--green);border-radius:4px;padding:20px 25px;width:320px;box-shadow:0 0 30px var(--green-glow),inset 0 0 15px rgba(0,255,65,.2);text-align:center;}
-.modal-brand {font-size:1.2rem;color:var(--green);letter-spacing:2px;margin-bottom:5px;text-shadow:0 0 8px var(--green-glow);}
-.modal-title {font-size:0.8rem;color:var(--amber);margin-bottom:15px;letter-spacing:1px;}
-.modal-btns {display:flex;flex-direction:column;gap:10px;}
-.modal-btn {padding:8px;font-family:var(--mono);font-size:0.7rem;font-weight:bold;cursor:pointer;border:1px solid;border-radius:3px;background:var(--led-off);transition:all .2s;}
-.btn-listen {color:var(--green);border-color:var(--green);}
-.btn-listen:hover {background:var(--green);color:#000;box-shadow:0 0 10px var(--green-glow);}
-.btn-admin {color:var(--amber);border-color:var(--amber);}
-.btn-admin:hover {background:var(--amber);color:#000;box-shadow:0 0 10px rgba(255,165,0,.5);}
-.blink {animation:blink 1s infinite;}
 
-/* ═══════════ ROLE VISIBILITY RULES ═══════════ */
-body.role-listener .admin-only { display: none !important; }
-body.role-admin .listener-only { display: none !important; }
-/* Note: body lacks class initially to hide player completely until role chosen */
 
 /* ═══════════ SPLASH SCREEN ═══════════ */
 .splash{position:fixed;inset:0;z-index:100000;background:var(--bg);display:flex;align-items:center;justify-content:center;transition:opacity .7s ease,visibility .7s ease;}
