@@ -139,6 +139,7 @@ function initAdminPeer() {
         conn.on('open', () => {
             updateAdminListenerCount();
             conn.send({type: 'metadata', track: lastTrackName});
+            if (isOnAir) conn.send({type: 'cadena_nacional', active: true});
             
             initAudio(); // ensure streamDest exists
             if (audioParams.streamDest) {
@@ -155,39 +156,62 @@ function initAdminPeer() {
     peer.on('error', err => console.error('Admin Peer error:', err));
 }
 
+let adminDataConn = null;
+let reconnectTimer = null;
+
+function connectToAdmin() {
+    clearTimeout(reconnectTimer);
+    if(isAdmin) return;
+    
+    adminDataConn = peer.connect('radiopavi-admin', { reliable: true });
+    
+    adminDataConn.on('open', () => {
+         DOM.tuneStatus.textContent = 'MATRIZ GLOBAL ENLAZADA ✓';
+         DOM.tuneStatus.className = 'url-status success';
+    });
+    
+    adminDataConn.on('data', data => {
+        if(data.type === 'cadena_nacional') toggleCadenaNacional(data.active);
+        else if(data.type === 'tts') playLoquendo(data.text);
+        else if(data.type === 'metadata') {
+            lastTrackName = data.track;
+            if(isTuningIn) DOM.trackName.textContent = data.track.toUpperCase() + ' (🔴 CADENA NACIONAL)';
+        }
+    });
+    
+    adminDataConn.on('close', () => {
+         DOM.tuneStatus.textContent = 'MATRIZ OFFLINE. BUSCANDO...';
+         DOM.tuneStatus.className = 'url-status error';
+         if(isTuningIn) toggleCadenaNacional(false);
+         reconnectTimer = setTimeout(connectToAdmin, 5000);
+    });
+    
+    adminDataConn.on('error', () => {
+         // Fails to connect or disconnects forcefully
+         DOM.tuneStatus.textContent = 'INTENTO FALLIDO. BUSCANDO...';
+         DOM.tuneStatus.className = 'url-status error';
+         reconnectTimer = setTimeout(connectToAdmin, 5000);
+    });
+}
+
 function initClientPeer() {
     peer = new Peer();
     peer.on('open', id => {
         DOM.tuneStatus.textContent = 'CONECTANDO A MATRIZ...';
         DOM.tuneStatus.className = 'url-status loading';
-        
-        const conn = peer.connect('radiopavi-admin');
-        conn.on('open', () => {
-             DOM.tuneStatus.textContent = 'MATRIZ GLOBAL ENLAZADA ✓';
-             DOM.tuneStatus.className = 'url-status success';
-        });
-        
-        conn.on('data', data => {
-            if(data.type === 'cadena_nacional') {
-                toggleCadenaNacional(data.active);
-            } else if(data.type === 'tts') {
-                playLoquendo(data.text);
-            } else if(data.type === 'metadata') {
-                lastTrackName = data.track;
-                if(isTuningIn) DOM.trackName.textContent = data.track.toUpperCase() + ' (🔴 CADENA NACIONAL)';
-            }
-        });
-        
-        conn.on('close', () => {
-             DOM.tuneStatus.textContent = 'MATRIZ OFFLINE';
-             DOM.tuneStatus.className = 'url-status error';
-             if(isTuningIn) toggleCadenaNacional(false);
-        });
+        connectToAdmin();
     });
 
     peer.on('error', err => {
-        DOM.tuneStatus.textContent = 'SIN CONEXIÓN (Modo Personal)';
-        DOM.tuneStatus.className = 'url-status error';
+        if(err.type === 'peer-unavailable') {
+            DOM.tuneStatus.textContent = 'ESPERANDO AL LOCUTOR...';
+            DOM.tuneStatus.className = 'url-status loading';
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connectToAdmin, 5000);
+        } else {
+            DOM.tuneStatus.textContent = 'SIN CONEXIÓN P2P';
+            DOM.tuneStatus.className = 'url-status error';
+        }
     });
 
     peer.on('call', call => {
@@ -311,7 +335,7 @@ function setupEvents() {
     });
 
     // Sliders
-    DOM.volSlider.addEventListener('input',e=>{audioParams.audioElement.volume=e.target.value;});
+    DOM.volSlider.addEventListener('input',e=>{audioParams.audioElement.volume=e.target.value; if(!isTuningIn) preCadenaVolume=e.target.value;});
     DOM.balSlider.addEventListener('input',e=>{if(audioParams.panner)audioParams.panner.pan.value=parseFloat(e.target.value);});
     DOM.progSlider.addEventListener('input',e=>{if(audioParams.audioElement.duration)audioParams.audioElement.currentTime=(e.target.value/100)*audioParams.audioElement.duration;});
 
@@ -320,6 +344,12 @@ function setupEvents() {
     DOM.btnPl.addEventListener('click',()=>{DOM.btnPl.classList.toggle('active');DOM.playlistDeck.style.display=DOM.btnPl.classList.contains('active')?'flex':'none';});
     DOM.btnShuf.addEventListener('click',()=>{DOM.btnShuf.classList.toggle('active');isShuffle=DOM.btnShuf.classList.contains('active');});
     DOM.btnRep.addEventListener('click',()=>{DOM.btnRep.classList.toggle('active');isRepeat=DOM.btnRep.classList.contains('active');});
+    
+    // Config Panel Customization Buttons
+    if(DOM.cfgScanlines) DOM.cfgScanlines.addEventListener('click', () => setScanlines(!scanlinesOn));
+    if(DOM.cfgGlow) DOM.cfgGlow.addEventListener('input', e => setGlow(e.target.value));
+    if(DOM.vizModes) DOM.vizModes.querySelectorAll('.cfg-opt').forEach(btn => btn.addEventListener('click', () => setVizMode(btn.dataset.viz)));
+    if(DOM.bgModes) DOM.bgModes.querySelectorAll('.cfg-opt').forEach(btn => btn.addEventListener('click', () => setBgMode(btn.dataset.bg)));
 
     // Time + ended 
     audioParams.audioElement.addEventListener('timeupdate',()=>{const c=audioParams.audioElement.currentTime,d=audioParams.audioElement.duration;if(d)DOM.progSlider.value=(c/d)*100;DOM.timeDisplay.textContent=`${String(Math.floor(c/60)).padStart(2,'0')}:${String(Math.floor(c%60)).padStart(2,'0')}`;});
