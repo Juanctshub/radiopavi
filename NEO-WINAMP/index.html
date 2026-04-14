@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RADIO-PAVI — Broadcasting System</title>
-    <meta name="description" content="RADIO-PAVI: Personal radio broadcasting station with live mic, EQ, and visualizer.">
+    <meta name="description"
+        content="RADIO-PAVI: Personal radio broadcasting station with live mic, EQ, and visualizer.">
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
+
 <body>
 
     <!-- ======== SPLASH / LOADING SCREEN ======== -->
@@ -21,7 +24,9 @@
                 <span></span><span></span><span></span><span></span><span></span>
                 <span></span><span></span><span></span><span></span><span></span>
             </div>
-            <div class="splash-bar"><div class="splash-fill" id="splash-fill"></div></div>
+            <div class="splash-bar">
+                <div class="splash-fill" id="splash-fill"></div>
+            </div>
             <div class="splash-status" id="splash-status">INITIALIZING SYSTEMS...</div>
         </div>
     </div>
@@ -87,8 +92,10 @@
                     <button class="tbtn" id="btn-eject" title="Open File">&#9167;</button>
                 </div>
                 <div class="sliders-col">
-                    <div class="slider-row"><span class="sl-label">VOL</span><input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.8" class="cyber-slider"></div>
-                    <div class="slider-row"><span class="sl-label">BAL</span><input type="range" id="balance-slider" min="-1" max="1" step="0.1" value="0" class="cyber-slider"></div>
+                    <div class="slider-row"><span class="sl-label">VOL</span><input type="range" id="volume-slider"
+                            min="0" max="1" step="0.01" value="0.8" class="cyber-slider"></div>
+                    <div class="slider-row"><span class="sl-label">BAL</span><input type="range" id="balance-slider"
+                            min="-1" max="1" step="0.1" value="0" class="cyber-slider"></div>
                 </div>
                 <div class="toggles-col">
                     <button class="toggle-btn" id="btn-eq">EQ</button>
@@ -122,8 +129,12 @@
         <div class="deck cfg-deck" id="cfg-deck">
             <div class="deck-label">&#9881; SKIN EDITOR</div>
             <div class="cfg-body">
-                <div class="cfg-group"><div class="cfg-title">THEME</div><div class="swatch-row" id="swatch-row"></div></div>
-                <div class="cfg-group"><div class="cfg-title">VISUALIZER</div>
+                <div class="cfg-group">
+                    <div class="cfg-title">THEME</div>
+                    <div class="swatch-row" id="swatch-row"></div>
+                </div>
+                <div class="cfg-group">
+                    <div class="cfg-title">VISUALIZER</div>
                     <div class="cfg-btns" id="viz-modes">
                         <button class="cfg-opt active" data-viz="bars">BARS</button>
                         <button class="cfg-opt" data-viz="wave">WAVE</button>
@@ -131,10 +142,17 @@
                     </div>
                 </div>
                 <div class="cfg-row-pair">
-                    <div class="cfg-group cfg-half"><div class="cfg-title">SCANLINES</div><button class="cfg-switch on" id="cfg-scanlines">ON</button></div>
-                    <div class="cfg-group cfg-half"><div class="cfg-title">GLOW</div><input type="range" id="cfg-glow" min="0" max="100" value="40" class="cyber-slider"></div>
+                    <div class="cfg-group cfg-half">
+                        <div class="cfg-title">SCANLINES</div><button class="cfg-switch on"
+                            id="cfg-scanlines">ON</button>
+                    </div>
+                    <div class="cfg-group cfg-half">
+                        <div class="cfg-title">GLOW</div><input type="range" id="cfg-glow" min="0" max="100" value="40"
+                            class="cyber-slider">
+                    </div>
                 </div>
-                <div class="cfg-group"><div class="cfg-title">BACKDROP</div>
+                <div class="cfg-group">
+                    <div class="cfg-title">BACKDROP</div>
                     <div class="cfg-btns" id="bg-modes">
                         <button class="cfg-opt active" data-bg="void">VOID</button>
                         <button class="cfg-opt" data-bg="grid">GRID</button>
@@ -149,14 +167,18 @@
             <div class="nav-bar">
                 <button class="tab active" data-target="local">LOCAL DRIVES</button>
                 <button class="tab" data-target="cloud">NET TERMINAL</button>
-                <button class="tab" data-target="broadcast" style="color:var(--amber); border-bottom-color:var(--amber);">CADENA NAC.</button>
-                <button class="tab" data-target="intercom" style="color:var(--cyan); border-bottom-color:var(--cyan);">CHAT</button>
+                <button class="tab" data-target="broadcast"
+                    style="color:var(--amber); border-bottom-color:var(--amber);">CADENA NAC.</button>
+                <button class="tab" data-target="intercom"
+                    style="color:var(--cyan); border-bottom-color:var(--cyan);">CHAT</button>
             </div>
-            
+
             <!-- LOCAL -->
             <div class="panel active" id="view-local">
                 <div class="playlist-box" id="drop-zone">
-                    <ul class="playlist" id="playlist"><li class="pl-empty">Drop audio files or click + ADD...</li></ul>
+                    <ul class="playlist" id="playlist">
+                        <li class="pl-empty">Drop audio files or click + ADD...</li>
+                    </ul>
                 </div>
                 <div class="pl-controls">
                     <button class="pl-btn" id="btn-add">+ ADD</button>
@@ -167,52 +189,70 @@
                 </div>
             </div>
             <input type="file" id="folder-input" webkitdirectory directory style="display:none;">
-            
+
             <!-- CLOUD -->
             <div class="panel" id="view-cloud" style="display:none;">
                 <div class="url-bar">
-                    <input type="text" id="api-search-input" class="cyber-input" placeholder="Paste audio URL or search term...">
+                    <input type="text" id="api-search-input" class="cyber-input"
+                        placeholder="Paste audio URL or search term...">
                     <button id="btn-add-url" class="url-btn">+URL</button>
                     <button id="btn-api-search" class="url-btn">SCAN</button>
                 </div>
                 <div class="url-status" id="url-status"></div>
                 <div class="playlist-box">
-                    <ul class="playlist" id="api-results"><li class="pl-empty">Paste a direct audio link and press +URL<br>or type a search and press SCAN</li></ul>
+                    <ul class="playlist" id="api-results">
+                        <li class="pl-empty">Paste a direct audio link and press +URL<br>or type a search and press SCAN
+                        </li>
+                    </ul>
                 </div>
             </div>
 
             <!-- BROADCAST -->
             <div class="panel" id="view-broadcast" style="display:none; padding:5px;">
-                 
-                 <!-- LISTENER VIEW -->
-                 <div id="bd-listener">
-                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0;">&#128225; RED GLOBAL PAVI</div>
-                     <p style="font-size:0.55rem; color:#888; margin-bottom:10px;">Estás enlazado a la matriz. Tu música será interrumpida si hay un aviso oficial de Cadena Nacional.</p>
-                     
-                     <div class="url-status success" id="tune-status" style="margin-bottom:8px;">ESCANENANDO MATRIZ...</div>
-                     <button class="win-btn" id="btn-manual-tune" style="width:100%; margin-bottom:10px; display:none; background:var(--green); color:#000; font-weight:bold;">🎧 SINTONIZAR EMISORA</button>
-                     
-                     <div style="margin-top:25px; border-top:1px solid #222; padding-top:10px; display:flex; gap:5px; align-items:center;">
-                         <span style="font-size:0.5rem; color:#666;">MODO LOCUTOR:</span>
-                         <input type="password" id="admin-pwd" class="cyber-input" placeholder="Clave..." style="height:18px; width:70px; font-size:0.5rem; padding:0 4px;">
-                         <button class="url-btn" id="btn-login-submit" style="padding:1px 6px; font-size:0.5rem;">AUTH</button>
-                         <span id="login-error" style="color:var(--red); font-size:0.45rem; margin-left:auto;"></span>
-                     </div>
-                 </div>
 
-                 <!-- ADMIN VIEW (Hidden by default) -->
-                 <div id="bd-admin" class="admin-only" style="display:none; flex-direction:column; gap:8px;">
-                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                         <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0; color:var(--amber);">&#9819; RADIO BOSS</div>
-                         <div style="display:flex; gap:5px;">
-                             <button class="url-btn" id="btn-dj-sync" title="Fuerza un enlazamiento puro y pausa la música de todos los oyentes." style="background:#222; font-size:0.5rem; padding:2px 5px;">DJ SYNC: OFF</button>
-                             <button class="url-btn" id="btn-rec" title="Graba toda la mezcla maestra de la Estación." style="background:#222; font-size:0.5rem; padding:2px 5px; color:#ff4444; border-color:#ff4444;">&#9679; REC</button>
-                         </div>
-                     </div>
-                     <p style="font-size:0.55rem; color:#888; margin-bottom:5px;">Activa ON AIR para forzar la Cadena Nacional en los oyentes.</p>
-                     
-                     <!-- ON AIR STRIP INLINE -->
-                     <div class="air-strip inner-air" id="air-strip">
+                <!-- LISTENER VIEW -->
+                <div id="bd-listener">
+                    <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0;">&#128225; RED
+                        GLOBAL PAVI</div>
+                    <p style="font-size:0.55rem; color:#888; margin-bottom:10px;">Estás enlazado a la matriz. Tu música
+                        será interrumpida si hay un aviso oficial de Cadena Nacional.</p>
+
+                    <div class="url-status success" id="tune-status" style="margin-bottom:8px;">ESCANENANDO MATRIZ...
+                    </div>
+                    <button class="win-btn" id="btn-manual-tune"
+                        style="width:100%; margin-bottom:10px; display:none; background:var(--green); color:#000; font-weight:bold;">🎧
+                        SINTONIZAR EMISORA</button>
+
+                    <div
+                        style="margin-top:25px; border-top:1px solid #222; padding-top:10px; display:flex; gap:5px; align-items:center;">
+                        <span style="font-size:0.5rem; color:#666;">MODO LOCUTOR:</span>
+                        <input type="password" id="admin-pwd" class="cyber-input" placeholder="Clave..."
+                            style="height:18px; width:70px; font-size:0.5rem; padding:0 4px;">
+                        <button class="url-btn" id="btn-login-submit"
+                            style="padding:1px 6px; font-size:0.5rem;">AUTH</button>
+                        <span id="login-error" style="color:var(--red); font-size:0.45rem; margin-left:auto;"></span>
+                    </div>
+                </div>
+
+                <!-- ADMIN VIEW (Hidden by default) -->
+                <div id="bd-admin" class="admin-only" style="display:none; flex-direction:column; gap:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="deck-label"
+                            style="text-align:left; border-bottom:none; margin-bottom:0; color:var(--amber);">&#9819;
+                            RADIO BOSS</div>
+                        <div style="display:flex; gap:5px;">
+                            <button class="url-btn" id="btn-dj-sync" title="Fuerza un enlazamiento puro y pausa la música de todos los oyentes." style="background:#222; font-size:0.5rem; padding:2px 5px;">DJ SYNC: OFF</button>
+                            <button class="url-btn" id="btn-rec" title="Graba toda la mezcla maestra de la Estación." style="background:#222; font-size:0.5rem; padding:2px 5px; color:#ff4444; border-color:#ff4444;">&#9679; REC</button>
+                        </div>
+                    </div>
+                    <p style="font-size:0.55rem; color:#888; margin-bottom:5px;">Activa ON AIR para forzar la Cadena
+                        Nacional en los oyentes.</p>
+
+                    <!-- MASTER PLAYLIST BUTTON FOR ADMIN -->
+                    <button class="win-btn" id="btn-admin-add-tracks" style="width:100%; margin-bottom:5px; background:var(--green); color:#000; font-weight:bold; font-size:0.6rem;">💿 AGREGAR CASCADA DE CANCIONES...</button>
+
+                    <!-- ON AIR STRIP INLINE -->
+                    <div class="air-strip inner-air" id="air-strip">
                         <button class="air-btn" id="btn-on-air">
                             <span class="air-dot" id="air-dot">&#9679;</span>
                             <span class="air-label" id="air-label">ON AIR</span>
@@ -225,44 +265,65 @@
                         </div>
                         <div class="air-mix">
                             <span class="air-mix-label">BG</span>
-                            <input type="range" id="duck-slider" min="0" max="50" value="20" step="1" class="cyber-slider air-slider">
+                            <input type="range" id="duck-slider" min="0" max="50" value="20" step="1"
+                                class="cyber-slider air-slider">
                             <span class="duck-val" id="duck-val">20%</span>
                         </div>
                     </div>
 
                     <!-- TTS LOQUENDO ENGINE -->
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                        <span style="font-size:0.5rem; color:var(--cyan); font-weight:bold;">🤖 AUTO-DJ (IA LOCUTOR)</span>
-                         <button class="url-btn" id="btn-ia-locutor" style="background:#222; font-size:0.5rem; padding:2px 5px;">IA: OFF</button>
+                        <span style="font-size:0.5rem; color:var(--cyan); font-weight:bold;">🤖 AUTO-DJ (IA
+                            LOCUTOR)</span>
+                        <button class="url-btn" id="btn-ia-locutor"
+                            style="background:#222; font-size:0.5rem; padding:2px 5px;">IA: OFF</button>
                     </div>
                     <div style="display:flex; gap:5px; margin-top:2px;">
-                        <textarea id="ia-prompt" class="cyber-input" placeholder="Instrucción de IA. Ej: Pon música loca y lee los mensajes del chat..." style="flex:1; height:30px; font-size:0.45rem; resize:vertical;"></textarea>
+                        <textarea id="ia-prompt" class="cyber-input"
+                            placeholder="Instrucción de IA. Ej: Pon música loca y lee los mensajes del chat..."
+                            style="flex:1; height:30px; font-size:0.45rem; resize:vertical;"></textarea>
                     </div>
                     <div style="display:flex; gap:5px; margin-top:2px;">
-                        <input type="text" id="tts-input" class="cyber-input" placeholder="Anuncio manual directo..." style="flex:1;">
-                        <button class="url-btn" id="btn-tts" title="Transmitir TTS" style="width:40px; padding:0; flex-shrink:0;">&#128498;</button>
+                        <input type="text" id="tts-input" class="cyber-input" placeholder="Anuncio manual directo..."
+                            style="flex:1;">
+                        <button class="url-btn" id="btn-tts" title="Transmitir TTS"
+                            style="width:40px; padding:0; flex-shrink:0;">&#128498;</button>
                     </div>
                     <!-- SOUNDBOARD -->
                     <div style="display:flex; gap:3px; margin-top:2px;">
-                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/d/d4/Bicycle_horn.ogg" title="Air Horn">🚨 HORN</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/1/1a/Applause.ogg" title="Applause">👏 CLAP</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/5/5a/Explosion-1.wav" title="Explosion">💣 BOOM</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/c/c5/Wired_Sound.ogg" title="Teleport">⚡ ZAP</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/4/42/Buzzer.ogg" title="Error">💨 FAIL</button>
+                        <button class="url-btn sfx-btn"
+                            data-sfx="https://upload.wikimedia.org/wikipedia/commons/d/d4/Bicycle_horn.ogg"
+                            title="Air Horn">🚨 HORN</button>
+                        <button class="url-btn sfx-btn"
+                            data-sfx="https://upload.wikimedia.org/wikipedia/commons/1/1a/Applause.ogg"
+                            title="Applause">👏 CLAP</button>
+                        <button class="url-btn sfx-btn"
+                            data-sfx="https://upload.wikimedia.org/wikipedia/commons/5/5a/Explosion-1.wav"
+                            title="Explosion">💣 BOOM</button>
+                        <button class="url-btn sfx-btn"
+                            data-sfx="https://upload.wikimedia.org/wikipedia/commons/c/c5/Wired_Sound.ogg"
+                            title="Teleport">⚡ ZAP</button>
+                        <button class="url-btn sfx-btn"
+                            data-sfx="https://upload.wikimedia.org/wikipedia/commons/4/42/Buzzer.ogg" title="Error">💨
+                            FAIL</button>
                     </div>
-                 </div>
+                </div>
             </div>
 
             <!-- CHAT / INTERCOM -->
-            <div class="panel" id="view-intercom" style="display:none; padding:5px; flex-direction:column; height:200px;">
-                 <ul id="chat-box" style="flex:1; background:#ffffff; border:1px solid #333; margin:0 0 5px 0; overflow-y:auto; list-style:none; padding:5px; font-size:0.6rem; color:#000000; font-family:var(--mono); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);">
+            <div class="panel" id="view-intercom"
+                style="display:none; padding:5px; flex-direction:column; height:200px;">
+                <ul id="chat-box"
+                    style="flex:1; background:#ffffff; border:1px solid #333; margin:0 0 5px 0; overflow-y:auto; list-style:none; padding:5px; font-size:0.6rem; color:#000000; font-family:var(--mono); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);">
                     <li style="color:#666; font-style:italic;">-- CHAT MUNDIAL P2P --</li>
-                 </ul>
-                 <div style="display:flex; gap:5px;">
-                     <input type="text" id="chat-name" class="cyber-input" placeholder="Alias..." style="width:70px; background:#fff; color:#000;">
-                     <input type="text" id="chat-input" class="cyber-input" placeholder="Escribe aquí..." style="flex:1; background:#fff; color:#000;">
-                     <button class="url-btn" id="btn-chat-send" style="padding:0 8px; font-weight:bold;">ENVIAR</button>
-                 </div>
+                </ul>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="chat-name" class="cyber-input" placeholder="Alias..."
+                        style="width:70px; background:#fff; color:#000;">
+                    <input type="text" id="chat-input" class="cyber-input" placeholder="Escribe aquí..."
+                        style="flex:1; background:#fff; color:#000;">
+                    <button class="url-btn" id="btn-chat-send" style="padding:0 8px; font-weight:bold;">ENVIAR</button>
+                </div>
             </div>
 
         </div>
@@ -275,4 +336,5 @@
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <script src="app.js"></script>
 </body>
+
 </html>
