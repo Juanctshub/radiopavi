@@ -1,0 +1,15 @@
+{
+    "buildCommand": "",
+    "outputDirectory": ".",
+    "rewrites": [
+        { "source": "/api/groq", "destination": "/api/groq.js" }
+    ],
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+            ]
+        }
+    ]
+}

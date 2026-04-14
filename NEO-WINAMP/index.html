@@ -196,14 +196,14 @@
             <div class="panel" id="view-cloud" style="display:none;">
                 <div class="url-bar">
                     <input type="text" id="api-search-input" class="cyber-input"
-                        placeholder="Paste audio URL or search term...">
+                        placeholder="🔗 YouTube URL / audio URL / buscar artista...">
                     <button id="btn-add-url" class="url-btn">+URL</button>
                     <button id="btn-api-search" class="url-btn">SCAN</button>
                 </div>
                 <div class="url-status" id="url-status"></div>
                 <div class="playlist-box">
                     <ul class="playlist" id="api-results">
-                        <li class="pl-empty">Paste a direct audio link and press +URL<br>or type a search and press SCAN
+                        <li class="pl-empty">🎬 Pega un link de YouTube o audio directo y pulsa +URL<br>🔍 O escribe un artista/canción y pulsa SCAN
                         </li>
                     </ul>
                 </div>
@@ -271,16 +271,18 @@
                     </div>
 
                     <!-- TTS LOQUENDO ENGINE -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                        <span style="font-size:0.5rem; color:var(--cyan); font-weight:bold;">🤖 AUTO-DJ (IA
-                            LOCUTOR)</span>
-                        <button class="url-btn" id="btn-ia-locutor"
-                            style="background:#222; font-size:0.5rem; padding:2px 5px;">IA: OFF</button>
-                    </div>
-                    <div style="display:flex; gap:5px; margin-top:2px;">
-                        <textarea id="ia-prompt" class="cyber-input"
-                            placeholder="Instrucción de IA. Ej: Pon música loca y lee los mensajes del chat..."
-                            style="flex:1; height:30px; font-size:0.45rem; resize:vertical;"></textarea>
+                    <div style="margin-top:6px; border-top:1px solid #333; padding-top:6px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:0.55rem; color:var(--cyan); font-weight:bold;">🧠 IA LOCUTOR (Groq AI)</span>
+                            <button class="url-btn" id="btn-ia-locutor"
+                                style="background:#222; font-size:0.5rem; padding:3px 8px; border-radius:3px;">IA: OFF</button>
+                        </div>
+                        <div style="display:flex; gap:5px; margin-top:4px;">
+                            <textarea id="ia-prompt" class="cyber-input"
+                                placeholder="Personalidad de la IA. Ej: Habla como reggaetonero, pone canciones de perreo, lee el chat y responde con humor..."
+                                style="flex:1; height:35px; font-size:0.48rem; resize:vertical; border-color: var(--cyan);"></textarea>
+                        </div>
+                        <div id="ia-status" style="font-size:0.45rem; color:#555; margin-top:2px;">IA desactivada</div>
                     </div>
                     <div style="display:flex; gap:5px; margin-top:2px;">
                         <input type="text" id="tts-input" class="cyber-input" placeholder="Anuncio manual directo..."
@@ -329,7 +331,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=2026.04.14.GROQ"></script>
 </body>
 
 </html>

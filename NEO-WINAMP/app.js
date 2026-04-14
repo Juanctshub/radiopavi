@@ -34,6 +34,14 @@ let chatHistory = [];
 let aiSpeechQueue = [];
 let aiIsTalking = false;
 
+// GROQ AI BRAIN (key hidden server-side in /api/groq)
+const GROQ_PROXY = '/api/groq';
+let aiMemory = [];
+let aiPeriodicTimer = null;
+let aiChatCooldown = false;
+let aiLastSongComment = 0;
+const AI_PERSONALITY = `Eres PAVI-BOT, el locutor mas chimba y arrecho de Radio PAVI. Hablas como un locutor latino de radio urbana, con mucha energia, sin censura, con humor callejero y buena vibra. Usas jerga latina (parcero, vale, compa, mano). Eres irreverente pero carismatico. Tus respuestas son CORTAS (1-2 oraciones max para que el TTS no sea eterno). Nunca uses emojis ni asteriscos ni formato markdown. Habla natural como si estuvieras al aire en vivo.`;
+
 // ON AIR
 let micStream = null, micSource = null, micGain = null, musicGain = null;
 let micAnalyser = null, isOnAir = false, micMeterFrame = null;
@@ -78,7 +86,7 @@ function queryDOM() {
         // INTERCOM & RECORDING
         viewIntercom: document.getElementById('view-intercom'), chatBox: document.getElementById('chat-box'), chatName: document.getElementById('chat-name'), chatInput: document.getElementById('chat-input'), btnChatSend: document.getElementById('btn-chat-send'),
         btnDjSync: document.getElementById('btn-dj-sync'), btnRec: document.getElementById('btn-rec'), sfxBtns: document.querySelectorAll('.sfx-btn'),
-        btnIaLocutor: document.getElementById('btn-ia-locutor'), iaPrompt: document.getElementById('ia-prompt'), btnManualTune: document.getElementById('btn-manual-tune'),
+        btnIaLocutor: document.getElementById('btn-ia-locutor'), iaPrompt: document.getElementById('ia-prompt'), iaStatus: document.getElementById('ia-status'), btnManualTune: document.getElementById('btn-manual-tune'),
         btnAdminAddTracks: document.getElementById('btn-admin-add-tracks'),
 
         // ON AIR
@@ -188,9 +196,9 @@ function initAdminPeer() {
                 if (chatHistory.length > 50) chatHistory.shift();
                 appendChat(data.name, data.text, false);
 
-                // IA Intercept Chat Reading
+                // IA Intercept Chat — Groq AI Brain reacts
                 if (isAdmin && isIaLocutor && !data.isHost) {
-                    pushAiSpeech(`En el chat mundial, ${data.name} nos dice: ${data.text}`);
+                    aiReactToChat(data.name, data.text);
                 }
 
                 // Re-brodadcast to all other listeners
@@ -231,16 +239,22 @@ function connectToAdmin() {
     });
 
     adminDataConn.on('data', data => {
-        if (data.type === 'tts') playLoquendo(data.text);
+        if (data.type === 'cadena_nacional') {
+            if (!manualTuned) toggleCadenaNacional(data.active);
+            else if (manualTuned && data.active) toggleCadenaNacional(true);
+        }
+        else if (data.type === 'dj_sync') {
+            if (!manualTuned) handleDjSyncRequest(data.active);
+        }
+        else if (data.type === 'tts') playLoquendo(data.text);
         else if (data.type === 'chat') appendChat(data.name, data.text, data.isHost);
         else if (data.type === 'mesh_delegate') {
-            // Receive Cascade Mesh Signal. Call the Proxy root node instead of Admin.
             const proxyCall = peer.call(data.target, null);
             proxyCall.on('stream', remoteStream => { setupSilentStream(remoteStream); });
         }
         else if (data.type === 'chat_history') {
             if (DOM.chatBox) {
-                DOM.chatBox.innerHTML = '<li style="color:#666; font-style:italic;">-- CHAT MUNDIAL P2P --</li>';
+                DOM.chatBox.innerHTML = '<li style="color:#666; font-style:italic; font-size:0.55rem; text-align:center;">-- ENLACE CHAT P2P --</li>';
                 data.data.forEach(msg => appendChat(msg.name, msg.text, msg.isHost));
             }
         }
@@ -448,12 +462,95 @@ function processAiQueue() {
     aiIsTalking = true;
     const task = aiSpeechQueue.shift();
 
+    // Broadcast to all listeners
+    p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send({ type: 'tts', text: task.text }); } catch (e) { } });
+
+    // Also show in chat as PAVI-BOT
+    const botMsg = { type: 'chat', text: task.text, name: '🤖 PAVI-BOT', isHost: true };
+    chatHistory.push(botMsg);
+    if (chatHistory.length > 50) chatHistory.shift();
+    appendChat('🤖 PAVI-BOT', task.text, true);
+    p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send(botMsg); } catch (e) { } });
+
     playLoquendo(task.text, () => {
         aiIsTalking = false;
         if (task.cb) task.cb();
-        setTimeout(processAiQueue, 500);
+        setTimeout(processAiQueue, 800);
     });
-    p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send({ type: 'tts', text: task.text }); } catch (e) { } });
+}
+
+// ═══════════ GROQ AI BRAIN ENGINE ═══════════
+async function callGroqAI(userMessage) {
+    const customPrompt = DOM.iaPrompt ? DOM.iaPrompt.value.trim() : '';
+    const currentTrack = (currentIndex >= 0 && playlist[currentIndex]) ? playlist[currentIndex].name : 'ninguna';
+    const playlistInfo = playlist.length > 0 ? playlist.slice(0, 10).map((t, i) => `${i + 1}. ${t.name}`).join(', ') : 'vacia';
+    const listenerCount = p2pConnections.filter(c => c.conn && c.conn.open).length;
+
+    const systemMsg = `${AI_PERSONALITY}\n\nCONTEXTO ACTUAL DE LA RADIO:\n- Cancion sonando: ${currentTrack}\n- Playlist (primeras 10): ${playlistInfo}\n- Oyentes conectados: ${listenerCount}\n- Hora: ${new Date().toLocaleTimeString('es-ES')}\n${customPrompt ? '- INSTRUCCION ESPECIAL DEL LOCUTOR HUMANO: ' + customPrompt : ''}`;
+
+    aiMemory.push({ role: 'user', content: userMessage });
+    if (aiMemory.length > 20) aiMemory = aiMemory.slice(-14);
+
+    try {
+        const res = await fetch(GROQ_PROXY, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'system', content: systemMsg }, ...aiMemory],
+                max_tokens: 120,
+                temperature: 0.9
+            })
+        });
+        const data = await res.json();
+        const reply = data.choices?.[0]?.message?.content?.trim();
+        if (reply) {
+            aiMemory.push({ role: 'assistant', content: reply });
+            return reply;
+        }
+        return null;
+    } catch (e) {
+        console.error('Groq AI Error:', e);
+        return null;
+    }
+}
+
+async function aiReactToChat(name, text) {
+    if (!isAdmin || !isIaLocutor || aiChatCooldown || aiIsTalking) return;
+    aiChatCooldown = true;
+    setTimeout(() => { aiChatCooldown = false; }, 8000);
+
+    const reply = await callGroqAI(`Un oyente llamado ${name} dice en el chat: "${text}". Responde como locutor de radio en vivo. Se breve.`);
+    if (reply) pushAiSpeech(reply);
+}
+
+async function aiAnnounceSong(prevTrack, nextTrack) {
+    if (!isAdmin || !isIaLocutor) return;
+    const reply = await callGroqAI(`Acaba de terminar "${prevTrack}" y ahora vas a poner "${nextTrack}". Haz una transicion de radio bien chimba. Se breve, maximo 2 oraciones.`);
+    if (reply) return reply;
+    return `Eso fue ${prevTrack}. Ahora viene ${nextTrack}, quedate que esto se pone bueno!`;
+}
+
+async function aiPeriodicComment() {
+    if (!isAdmin || !isIaLocutor || aiIsTalking || aiSpeechQueue.length > 0) return;
+    const now = Date.now();
+    if (now - aiLastSongComment < 45000) return;
+    aiLastSongComment = now;
+
+    const recentChat = chatHistory.slice(-5).map(m => `${m.name}: ${m.text}`).join(' | ');
+    const prompt = recentChat
+        ? `Estas en vivo en la radio. El chat reciente dice: "${recentChat}". Haz un comentario corto de locutor sobre lo que pasa en el chat o sobre la cancion que suena. Maximo 1 oracion.`
+        : `Estas en vivo en la radio. Haz un comentario random de locutor bien energetico. Puedes hablar de la cancion que suena, saludar a los oyentes, o decir algo loco. Maximo 1 oracion.`;
+    const reply = await callGroqAI(prompt);
+    if (reply) pushAiSpeech(reply);
+}
+
+function startAiPeriodicLoop() {
+    if (aiPeriodicTimer) clearInterval(aiPeriodicTimer);
+    aiPeriodicTimer = setInterval(aiPeriodicComment, 60000);
+}
+
+function stopAiPeriodicLoop() {
+    if (aiPeriodicTimer) { clearInterval(aiPeriodicTimer); aiPeriodicTimer = null; }
 }
 
 function playLoquendo(text, onEndCallback = null) {
@@ -511,9 +608,10 @@ function sendChatMsg() {
         p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send(msg); } catch (e) { } });
     } else {
         appendChat(name, text, false); // Render local for listener
-        if (adminDataConn && adminDataConn.open) {
-            adminDataConn.send({ type: 'chat', text, name, isHost: false });
-        }
+        // Send to admin relay — no .open check (PeerJS false negatives)
+        try {
+            if (adminDataConn) adminDataConn.send({ type: 'chat', text, name, isHost: false });
+        } catch (e) { console.log('Chat send failed, reconnecting...'); connectToAdmin(); }
     }
     DOM.chatInput.value = '';
 }
@@ -622,10 +720,21 @@ function setupEvents() {
 
     // IA & TUNING Manual
     if (DOM.btnIaLocutor) {
-        DOM.btnIaLocutor.addEventListener('click', () => {
+        DOM.btnIaLocutor.addEventListener('click', async () => {
             isIaLocutor = !isIaLocutor;
-            DOM.btnIaLocutor.textContent = 'IA: ' + (isIaLocutor ? 'ON' : 'OFF');
+            DOM.btnIaLocutor.textContent = 'IA: ' + (isIaLocutor ? '🧠 ON' : 'OFF');
             DOM.btnIaLocutor.style.color = isIaLocutor ? 'var(--cyan)' : '';
+            DOM.btnIaLocutor.style.background = isIaLocutor ? 'rgba(0,212,255,0.15)' : '#222';
+            if (DOM.iaStatus) DOM.iaStatus.textContent = isIaLocutor ? '🧠 Cerebro IA activo — Groq LLM conectado' : 'IA desactivada';
+            if (DOM.iaStatus) DOM.iaStatus.style.color = isIaLocutor ? 'var(--cyan)' : '#555';
+            if (isIaLocutor) {
+                startAiPeriodicLoop();
+                const welcome = await callGroqAI('Acabas de activarte como locutor de Radio PAVI. Saluda a la audiencia con una bienvenida epica y corta. Maximo 2 oraciones.');
+                if (welcome) pushAiSpeech(welcome);
+            } else {
+                stopAiPeriodicLoop();
+                aiMemory = [];
+            }
         });
     }
     if (DOM.btnManualTune) {
@@ -707,8 +816,8 @@ function setupEvents() {
     audioParams.audioElement.addEventListener('ended', () => {
         if (!playlist.length) return;
         if (!isRepeat) {
-            // AUTO-DJ INTERCEPT
-            if (isAdmin && isIaLocutor && window.speechSynthesis) {
+            // AUTO-DJ INTERCEPT — GROQ AI BRAIN
+            if (isAdmin && isIaLocutor) {
                 audioParams.isPlaying = false;
                 const prevTrack = playlist[currentIndex].name.replace('.mp3', '').toUpperCase();
 
@@ -716,13 +825,13 @@ function setupEvents() {
                 if (isShuffle) nextIndex = Math.floor(Math.random() * playlist.length);
                 const nextTrack = playlist[nextIndex].name.replace('.mp3', '').toUpperCase();
 
-                const promptBlock = DOM.iaPrompt ? DOM.iaPrompt.value.trim() : '';
-                const script = `${promptBlock ? promptBlock + '. ' : ''} Acabamos de disfrutar ${prevTrack}. Prepárate porque sigue el temazo: ${nextTrack}.`;
-
-                pushAiSpeech(script, () => {
-                    loadTrack(nextIndex);
-                    playAudio();
-                });
+                (async () => {
+                    const script = await aiAnnounceSong(prevTrack, nextTrack);
+                    pushAiSpeech(script, () => {
+                        loadTrack(nextIndex);
+                        playAudio();
+                    });
+                })();
                 return;
             }
 
@@ -796,9 +905,150 @@ function updatePlaylistHighlight() { const items = DOM.playlistEl.querySelectorA
 function updateStats() { DOM.statsEl.textContent = `${playlist.length} TRACKS`; }
 
 function setStatus(msg, cls) { DOM.urlStatus.textContent = msg; DOM.urlStatus.className = 'url-status ' + (cls || ''); if (cls === 'success') setTimeout(() => { DOM.urlStatus.textContent = ''; DOM.urlStatus.className = 'url-status'; }, 4000); }
-function testAndAddURL() { const url = DOM.apiInput.value.trim(); if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) { setStatus('⚠ Enter a valid URL', 'error'); return; } setStatus('CONNECTING TO SIGNAL...', 'loading'); const testAudio = new Audio(); testAudio.crossOrigin = 'anonymous'; let resolved = false; const timeout = setTimeout(() => { if (resolved) return; resolved = true; addURLTrack(url); setStatus('✓ TRACK QUEUED (slow server)', 'success'); }, 6000); testAudio.addEventListener('canplay', () => { if (resolved) return; resolved = true; clearTimeout(timeout); addURLTrack(url, testAudio.duration ? `${String(Math.floor(testAudio.duration / 60)).padStart(2, '0')}:${String(Math.floor(testAudio.duration % 60)).padStart(2, '0')}` : 'LIVE'); setStatus('✓ SIGNAL LOCKED — SAVED', 'success'); }, { once: true }); testAudio.addEventListener('error', () => { if (resolved) return; resolved = true; clearTimeout(timeout); addURLTrack(url); setStatus('⚠ WEAK SIGNAL — added anyway', 'error'); }, { once: true }); testAudio.src = url; testAudio.load(); }
+
+// YouTube URL detector
+function getYouTubeId(url) {
+    const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+    return m ? m[1] : null;
+}
+
+const INVIDIOUS_INSTANCES = [
+    'https://inv.tux.pizza',
+    'https://invidious.fdn.fr',
+    'https://vid.puffyan.us',
+    'https://invidious.nerdvpn.de',
+    'https://iv.ggtyler.dev'
+];
+
+async function resolveYouTubeAudio(videoId) {
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            setStatus(`PROBANDO ${instance.split('//')[1]}...`, 'loading');
+            const res = await fetch(`${instance}/api/v1/videos/${videoId}?fields=title,author,adaptiveFormats,lengthSeconds`, { signal: AbortSignal.timeout(8000) });
+            if (!res.ok) continue;
+            const data = await res.json();
+            const audioFormats = (data.adaptiveFormats || []).filter(f => f.type && f.type.startsWith('audio/'));
+            if (!audioFormats.length) continue;
+            audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+            const best = audioFormats[0];
+            const mins = Math.floor(data.lengthSeconds / 60);
+            const secs = data.lengthSeconds % 60;
+            return {
+                url: best.url,
+                title: data.title || 'YouTube Audio',
+                artist: data.author || '',
+                duration: `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+            };
+        } catch (e) { continue; }
+    }
+    return null;
+}
+
+async function testAndAddURL() {
+    const url = DOM.apiInput.value.trim();
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) { setStatus('⚠ URL inválida', 'error'); return; }
+
+    // YouTube detection
+    const ytId = getYouTubeId(url);
+    if (ytId) {
+        setStatus('🎬 YOUTUBE DETECTADO — EXTRAYENDO AUDIO...', 'loading');
+        const result = await resolveYouTubeAudio(ytId);
+        if (result) {
+            const name = result.artist ? `${result.title} — ${result.artist}` : result.title;
+            playlist.push({ name, url: result.url, duration: result.duration, source: 'url' });
+            renderPlaylist(); updateStats(); saveURLPlaylist();
+            DOM.apiInput.value = '';
+            if (currentIndex === -1) loadTrack(playlist.length - 1);
+            setStatus('✓ YOUTUBE AUDIO LOCKED', 'success');
+        } else {
+            setStatus('⚠ NO SE PUDO EXTRAER — Intenta otro link', 'error');
+        }
+        return;
+    }
+
+    // Normal audio URL
+    setStatus('CONNECTING TO SIGNAL...', 'loading');
+    const testAudio = new Audio(); testAudio.crossOrigin = 'anonymous'; let resolved = false;
+    const timeout = setTimeout(() => { if (resolved) return; resolved = true; addURLTrack(url); setStatus('✓ TRACK QUEUED (slow server)', 'success'); }, 6000);
+    testAudio.addEventListener('canplay', () => { if (resolved) return; resolved = true; clearTimeout(timeout); addURLTrack(url, testAudio.duration ? `${String(Math.floor(testAudio.duration / 60)).padStart(2, '0')}:${String(Math.floor(testAudio.duration % 60)).padStart(2, '0')}` : 'LIVE'); setStatus('✓ SIGNAL LOCKED — SAVED', 'success'); }, { once: true });
+    testAudio.addEventListener('error', () => { if (resolved) return; resolved = true; clearTimeout(timeout); addURLTrack(url); setStatus('⚠ WEAK SIGNAL — added anyway', 'error'); }, { once: true });
+    testAudio.src = url; testAudio.load();
+}
+
 function addURLTrack(url, duration) { const name = decodeURIComponent(url.split('/').pop().split('?')[0]).replace(/\.[^/.]+$/, '') || 'Audio Stream'; playlist.push({ name, url, duration: duration || 'URL', source: 'url' }); renderPlaylist(); updateStats(); saveURLPlaylist(); DOM.apiInput.value = ''; DOM.btnAddUrl.classList.remove('url-hot'); if (currentIndex === -1) loadTrack(playlist.length - 1); }
-async function searchiTunes(query) { DOM.apiResults.innerHTML = '<li class="pl-empty" style="color:var(--amber)">SCANNING FREQUENCIES...</li>'; try { const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=20`); const data = await res.json(); DOM.apiResults.innerHTML = ''; if (!data.results.length) { DOM.apiResults.innerHTML = '<li class="pl-empty" style="color:var(--red)">NO SIGNAL</li>'; return; } data.results.forEach(track => { if (!track.previewUrl) return; const li = document.createElement('li'); li.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;display:flex;align-items:center;gap:6px;"><img src="${track.artworkUrl60 || ''}" style="width:22px;height:22px;border-radius:2px;flex-shrink:0;" onerror="this.style.display='none'">${track.trackName} — <span style="opacity:.6">${track.artistName}</span></span><button class="url-btn" style="padding:2px 8px;font-size:.55rem;">+ADD</button>`; li.querySelector('button').addEventListener('click', e => { e.stopPropagation(); playlist.push({ name: `${track.trackName} — ${track.artistName}`, url: track.previewUrl, artwork: track.artworkUrl100, duration: '0:30', source: 'url' }); renderPlaylist(); updateStats(); saveURLPlaylist(); e.target.textContent = '✓'; e.target.style.background = 'var(--green)'; e.target.style.color = '#000'; }); li.addEventListener('dblclick', () => { playlist.push({ name: `${track.trackName} — ${track.artistName}`, url: track.previewUrl, artwork: track.artworkUrl100, duration: '0:30', source: 'url' }); renderPlaylist(); updateStats(); saveURLPlaylist(); loadTrack(playlist.length - 1); }); DOM.apiResults.appendChild(li); }); } catch (e) { DOM.apiResults.innerHTML = '<li class="pl-empty" style="color:var(--red)">CONNECTION FAILED</li>'; } }
+
+async function searchiTunes(query) {
+    DOM.apiResults.innerHTML = '<li class="pl-empty" style="color:var(--amber)">SCANNING FREQUENCIES...</li>';
+    let hasResults = false;
+
+    // iTunes search
+    try {
+        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=12`);
+        const data = await res.json();
+        if (data.results && data.results.length) {
+            DOM.apiResults.innerHTML = '<li style="color:var(--green); font-size:0.5rem; padding:4px; pointer-events:none;">── 🍎 iTUNES PREVIEWS ──</li>';
+            hasResults = true;
+            data.results.forEach(track => {
+                if (!track.previewUrl) return;
+                const li = document.createElement('li');
+                li.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;display:flex;align-items:center;gap:6px;"><img src="${track.artworkUrl60 || ''}" style="width:22px;height:22px;border-radius:2px;flex-shrink:0;" onerror="this.style.display='none'">${track.trackName} — <span style="opacity:.6">${track.artistName}</span></span><button class="url-btn" style="padding:2px 8px;font-size:.55rem;">+ADD</button>`;
+                li.querySelector('button').addEventListener('click', e => { e.stopPropagation(); playlist.push({ name: `${track.trackName} — ${track.artistName}`, url: track.previewUrl, artwork: track.artworkUrl100, duration: '0:30', source: 'url' }); renderPlaylist(); updateStats(); saveURLPlaylist(); e.target.textContent = '✓'; e.target.style.background = 'var(--green)'; e.target.style.color = '#000'; });
+                li.addEventListener('dblclick', () => { playlist.push({ name: `${track.trackName} — ${track.artistName}`, url: track.previewUrl, artwork: track.artworkUrl100, duration: '0:30', source: 'url' }); renderPlaylist(); updateStats(); saveURLPlaylist(); loadTrack(playlist.length - 1); });
+                DOM.apiResults.appendChild(li);
+            });
+        }
+    } catch (e) { }
+
+    // YouTube search via Invidious
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&sort_by=relevance`, { signal: AbortSignal.timeout(6000) });
+            if (!res.ok) continue;
+            const videos = await res.json();
+            if (!videos.length) continue;
+
+            const header = document.createElement('li');
+            header.style.cssText = 'color:var(--red); font-size:0.5rem; padding:4px; pointer-events:none;';
+            header.textContent = '── 🎬 YOUTUBE (click para extraer audio) ──';
+            DOM.apiResults.appendChild(header);
+            hasResults = true;
+
+            videos.slice(0, 10).forEach(v => {
+                const li = document.createElement('li');
+                const mins = Math.floor((v.lengthSeconds || 0) / 60);
+                const secs = (v.lengthSeconds || 0) % 60;
+                const dur = `${mins}:${String(secs).padStart(2, '0')}`;
+                const thumb = v.videoThumbnails?.[0]?.url || '';
+                li.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;display:flex;align-items:center;gap:6px;"><img src="${thumb}" style="width:30px;height:22px;border-radius:2px;flex-shrink:0;object-fit:cover;" onerror="this.style.display='none'">${v.title} <span style="opacity:.6">[${dur}]</span></span><button class="url-btn" style="padding:2px 8px;font-size:.55rem;">+YT</button>`;
+                li.querySelector('button').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    e.target.textContent = '⏳';
+                    const result = await resolveYouTubeAudio(v.videoId);
+                    if (result) {
+                        playlist.push({ name: result.title + (result.artist ? ` — ${result.artist}` : ''), url: result.url, duration: result.duration, source: 'url' });
+                        renderPlaylist(); updateStats(); saveURLPlaylist();
+                        e.target.textContent = '✓'; e.target.style.background = 'var(--green)'; e.target.style.color = '#000';
+                    } else {
+                        e.target.textContent = '✗'; e.target.style.background = 'var(--red)';
+                    }
+                });
+                li.addEventListener('dblclick', async () => {
+                    setStatus('EXTRAYENDO AUDIO YT...', 'loading');
+                    const result = await resolveYouTubeAudio(v.videoId);
+                    if (result) {
+                        playlist.push({ name: result.title + (result.artist ? ` — ${result.artist}` : ''), url: result.url, duration: result.duration, source: 'url' });
+                        renderPlaylist(); updateStats(); saveURLPlaylist(); loadTrack(playlist.length - 1);
+                        setStatus('✓ YOUTUBE AUDIO LOCKED', 'success');
+                    } else { setStatus('⚠ EXTRACTION FAILED', 'error'); }
+                });
+                DOM.apiResults.appendChild(li);
+            });
+            break;
+        } catch (e) { continue; }
+    }
+
+    if (!hasResults) { DOM.apiResults.innerHTML = '<li class="pl-empty" style="color:var(--red)">NO SIGNAL</li>'; }
+}
 
 // ═══════════════════════════ GLOBAL VISUALIZER ═══════════════════════════
 let ctx, nCtx;
