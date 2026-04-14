@@ -143,8 +143,11 @@ function initAdminPeer() {
             
             initAudio(); // ensure streamDest exists
             if (audioParams.streamDest) {
-                const call = peer.call(conn.peer, audioParams.streamDest.stream);
-                connectionObj.call = call;
+                // Wait 500ms for data channel to stabilize before sending bulky media stream (fixes WebRTC race conditions)
+                setTimeout(() => {
+                    const call = peer.call(conn.peer, audioParams.streamDest.stream);
+                    connectionObj.call = call;
+                }, 500);
             }
         });
         
@@ -222,20 +225,28 @@ function initClientPeer() {
     });
 }
 
+let remoteAudioPlayer = null;
+
 function setupSilentStream(stream) {
+    if(!remoteAudioPlayer) {
+        remoteAudioPlayer = new Audio();
+        remoteAudioPlayer.autoplay = true;
+        // Keep it out of DOM, just a memory element
+    }
+    remoteAudioPlayer.srcObject = stream;
+    remoteAudioPlayer.volume = isTuningIn ? 1.0 : 0; // Silent until Cadena Nacional
+    remoteAudioPlayer.play().catch(e => console.log('Autoplay deferred'));
+    
     if(!listenerAudioCtx) {
         listenerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    const source = listenerAudioCtx.createMediaStreamSource(stream);
-    streamGainNode = listenerAudioCtx.createGain();
-    streamGainNode.gain.value = 0; // Silent until Cadena Nacional
-    
-    globalAnalyser = listenerAudioCtx.createAnalyser();
-    globalAnalyser.fftSize = 256;
-    
-    source.connect(globalAnalyser);
-    globalAnalyser.connect(streamGainNode);
-    streamGainNode.connect(listenerAudioCtx.destination);
+    try {
+        const source = listenerAudioCtx.createMediaStreamSource(stream);
+        globalAnalyser = listenerAudioCtx.createAnalyser();
+        globalAnalyser.fftSize = 256;
+        source.connect(globalAnalyser);
+        // Do NOT connect to destination, remoteAudioPlayer handles audio output directly.
+    } catch(e) { console.error('SilentStream Graph Error:', e); }
 }
 
 function toggleCadenaNacional(active) {
@@ -245,7 +256,11 @@ function toggleCadenaNacional(active) {
         
         preCadenaVolume = audioParams.audioElement.volume;
         audioParams.audioElement.volume = 0.1; // Duck local player
-        if(streamGainNode) streamGainNode.gain.value = 1.0;
+        
+        if(remoteAudioPlayer) {
+            remoteAudioPlayer.volume = 1.0;
+            remoteAudioPlayer.play().catch(e=>console.log(e));
+        }
         
         document.getElementById('net-badge').textContent = 'NET';
         DOM.timeDisplay.textContent = 'LIVE';
@@ -255,7 +270,7 @@ function toggleCadenaNacional(active) {
         DOM.player.style.boxShadow = '0 0 40px rgba(255,0,0,0.3)'; // Visual cue
     } else {
         audioParams.audioElement.volume = preCadenaVolume; // Restore local
-        if(streamGainNode) streamGainNode.gain.value = 0; // Mute WebRTC
+        if(remoteAudioPlayer) remoteAudioPlayer.volume = 0; // Mute WebRTC
         
         document.getElementById('net-badge').textContent = 'ST';
         const c = audioParams.audioElement.currentTime;
