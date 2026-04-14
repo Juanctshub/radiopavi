@@ -146,8 +146,13 @@ function initAdminPeer() {
         
         conn.on('open', () => {
             updateAdminListenerCount();
-            conn.send({type: 'metadata', track: lastTrackName});
-            if (isOnAir) conn.send({type: 'cadena_nacional', active: true});
+            
+            // Re-sync states after a small delay to ensure listener channel is established
+            setTimeout(() => {
+                conn.send({type: 'metadata', track: lastTrackName});
+                if (isOnAir) conn.send({type: 'cadena_nacional', active: true});
+                if (isDjSync) conn.send({type: 'dj_sync', active: true});
+            }, 300);
             
             initAudio(); // ensure streamDest exists
             if (audioParams.streamDest) {
@@ -338,7 +343,7 @@ function sendChatMsg() {
     const text = DOM.chatInput.value.trim();
     if(!text) return;
     const name = DOM.chatName.value.trim() || 'ANÓNIMO';
-    appendChat(name, text, isAdmin);
+    appendChat(name, text, isAdmin); // Render local
     
     if(isAdmin) {
         p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'chat', text, name, isHost: true}));
@@ -351,7 +356,7 @@ function appendChat(name, text, isHost) {
     if(!DOM.chatBox) return;
     const li = document.createElement('li');
     li.style.marginBottom = '4px';
-    li.innerHTML = `<strong style="color:${isHost ? 'var(--amber)' : 'var(--cyan)'}">[${name}]</strong>: ${text}`;
+    li.innerHTML = `<strong style="color:${isHost ? 'var(--red)' : 'var(--blue)'}">[${name}]</strong>: ${text}`;
     DOM.chatBox.appendChild(li);
     DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
 }
@@ -438,6 +443,9 @@ function setupEvents() {
     
     DOM.btnPlay.addEventListener('click',()=>{flash(DOM.btnPlay);resumeCtx();if(playlist.length===0)DOM.fileInput.click();else if(!audioParams.isPlaying){if(currentIndex===-1)loadTrack(0);else playAudio();}});
     DOM.btnPause.addEventListener('click',()=>{flash(DOM.btnPause);resumeCtx();if(audioParams.isPlaying)pauseAudio();else if(currentIndex>=0)playAudio();});
+    
+    // Global Body Click to unlock mobile Audio/TTS issues
+    document.body.addEventListener('click', resumeCtx);
     DOM.btnStop.addEventListener('click',()=>{flash(DOM.btnStop);resumeCtx();stopAudio();});
     DOM.btnNext.addEventListener('click',()=>{flash(DOM.btnNext);resumeCtx();if(!playlist.length)return;if(isShuffle)loadTrack(Math.floor(Math.random()*playlist.length));else if(currentIndex<playlist.length-1)loadTrack(currentIndex+1);else loadTrack(0);});
     DOM.btnPrev.addEventListener('click',()=>{flash(DOM.btnPrev);resumeCtx();if(!playlist.length)return;if(audioParams.audioElement.currentTime>3)audioParams.audioElement.currentTime=0;else if(currentIndex>0)loadTrack(currentIndex-1);else audioParams.audioElement.currentTime=0;});

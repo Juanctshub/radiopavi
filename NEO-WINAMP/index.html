@@ -150,7 +150,7 @@
                 <button class="tab active" data-target="local">LOCAL DRIVES</button>
                 <button class="tab" data-target="cloud">NET TERMINAL</button>
                 <button class="tab" data-target="broadcast" style="color:var(--amber); border-bottom-color:var(--amber);">CADENA NAC.</button>
-                <button class="tab" data-target="intercom" style="color:var(--cyan); border-bottom-color:var(--cyan);">INTERCOM</button>
+                <button class="tab" data-target="intercom" style="color:var(--cyan); border-bottom-color:var(--cyan);">CHAT</button>
             </div>
             
             <!-- LOCAL -->
@@ -236,24 +236,24 @@
                     </div>
                     <!-- SOUNDBOARD -->
                     <div style="display:flex; gap:3px; margin-top:2px;">
-                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/alarms/air_horn.ogg" title="Air Horn">🚨 HORN</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/crowds/light_applause.ogg" title="Applause">👏 CLAP</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/impacts/crash.ogg" title="Explosion">💣 BOOM</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/science_fiction/teleport.ogg" title="Teleport">⚡ ZAP</button>
-                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/cartoon/slip_fart.ogg" title="Error">💨 FAIL</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/d/d4/Bicycle_horn.ogg" title="Air Horn">🚨 HORN</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/1/1a/Applause.ogg" title="Applause">👏 CLAP</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/5/5a/Explosion-1.wav" title="Explosion">💣 BOOM</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/c/c5/Wired_Sound.ogg" title="Teleport">⚡ ZAP</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://upload.wikimedia.org/wikipedia/commons/4/42/Buzzer.ogg" title="Error">💨 FAIL</button>
                     </div>
                  </div>
             </div>
 
-            <!-- INTERCOM -->
+            <!-- CHAT / INTERCOM -->
             <div class="panel" id="view-intercom" style="display:none; padding:5px; flex-direction:column; height:200px;">
-                 <ul id="chat-box" style="flex:1; background:#000; border:1px solid #333; margin:0 0 5px 0; overflow-y:auto; list-style:none; padding:5px; font-size:0.55rem; color:#ccc; font-family:var(--mono);">
-                    <li style="color:#666; font-style:italic;">-- INTERCOM ENCRIPTADO P2P --</li>
+                 <ul id="chat-box" style="flex:1; background:#ffffff; border:1px solid #333; margin:0 0 5px 0; overflow-y:auto; list-style:none; padding:5px; font-size:0.6rem; color:#000000; font-family:var(--mono); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);">
+                    <li style="color:#666; font-style:italic;">-- CHAT MUNDIAL P2P --</li>
                  </ul>
                  <div style="display:flex; gap:5px;">
-                     <input type="text" id="chat-name" class="cyber-input" placeholder="Alias..." style="width:70px;">
-                     <input type="text" id="chat-input" class="cyber-input" placeholder="Mensaje a mundial..." style="flex:1;">
-                     <button class="url-btn" id="btn-chat-send" style="padding:0 8px;">ENVIAR</button>
+                     <input type="text" id="chat-name" class="cyber-input" placeholder="Alias..." style="width:70px; background:#fff; color:#000;">
+                     <input type="text" id="chat-input" class="cyber-input" placeholder="Escribe aquí..." style="flex:1; background:#fff; color:#000;">
+                     <button class="url-btn" id="btn-chat-send" style="padding:0 8px; font-weight:bold;">ENVIAR</button>
                  </div>
             </div>
 
