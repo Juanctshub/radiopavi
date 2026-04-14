@@ -307,6 +307,12 @@ function setupEvents() {
 }
 
 // ═══════════════════════════ PLAYLIST & DATA MANAGER ═══════════════════════════
+function openDB(){return new Promise(r=>{try{const q=indexedDB.open('RadioPavi',1);q.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains('tracks'))d.createObjectStore('tracks',{keyPath:'id',autoIncrement:true});};q.onsuccess=()=>{db=q.result;r();};q.onerror=()=>r();}catch(e){r();}});}
+function dbSave(n,f,dur){if(!db)return Promise.resolve();return new Promise(r=>{const rd=new FileReader();rd.onload=()=>{try{const tx=db.transaction('tracks','readwrite');tx.objectStore('tracks').add({name:n,data:rd.result,type:f.type,duration:dur});tx.oncomplete=r;tx.onerror=()=>r();}catch(e){r();}};rd.onerror=()=>r();rd.readAsArrayBuffer(f);});}
+function dbLoadAll(){if(!db)return Promise.resolve([]);return new Promise(r=>{try{const tx=db.transaction('tracks','readonly');const q=tx.objectStore('tracks').getAll();q.onsuccess=()=>r(q.result||[]);q.onerror=()=>r([]);}catch(e){r([]);}});}
+function dbClear(){return new Promise(r=>{if(!db)return r();try{const tx=db.transaction('tracks','readwrite');tx.objectStore('tracks').clear();tx.oncomplete=r;tx.onerror=()=>r();}catch(e){r();}});}
+function dbDelete(id){return new Promise(r=>{if(!db||!id)return r();try{const tx=db.transaction('tracks','readwrite');tx.objectStore('tracks').delete(id);tx.oncomplete=r;tx.onerror=()=>r();}catch(e){r();}});}
+
 async function loadPersistedPlaylist() {
     try { const s=localStorage.getItem('radio_pavi_urls'); if(s) JSON.parse(s).forEach(t=>playlist.push({...t,source:'url'})); } catch(e){}
     const dbT = await dbLoadAll(); dbT.forEach(t=>{ playlist.push({name:t.name,blob:new Blob([t.data],{type:t.type}),duration:t.duration||'00:00',dbId:t.id,source:'local'}); });
