@@ -227,7 +227,7 @@ function connectToAdmin() {
     adminDataConn.on('open', () => {
         DOM.tuneStatus.textContent = 'MATRIZ GLOBAL ENLAZADA ✓';
         DOM.tuneStatus.className = 'url-status success';
-        if (DOM.btnManualTune) DOM.btnManualTune.style.display = 'block';
+        if (DOM.btnManualTune && !isAdmin) DOM.btnManualTune.style.display = 'block';
     });
 
     adminDataConn.on('data', data => {
