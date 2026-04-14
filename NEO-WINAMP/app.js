@@ -28,6 +28,9 @@ let preCadenaVolume = 1.0;
 let isDjSync = false;
 let mediaRecorder = null;
 let recordedChunks = [];
+let isIaLocutor = false;
+let manualTuned = false;
+let chatHistory = [];
 
 // ON AIR
 let micStream = null, micSource = null, micGain = null, musicGain = null;
@@ -73,6 +76,7 @@ function queryDOM() {
         // INTERCOM & RECORDING
         viewIntercom:document.getElementById('view-intercom'), chatBox:document.getElementById('chat-box'), chatName:document.getElementById('chat-name'), chatInput:document.getElementById('chat-input'), btnChatSend:document.getElementById('btn-chat-send'),
         btnDjSync:document.getElementById('btn-dj-sync'), btnRec:document.getElementById('btn-rec'), sfxBtns:document.querySelectorAll('.sfx-btn'),
+        btnIaLocutor:document.getElementById('btn-ia-locutor'), iaPrompt:document.getElementById('ia-prompt'), btnManualTune:document.getElementById('btn-manual-tune'),
 
         // ON AIR
         btnOnAir:document.getElementById('btn-on-air'), airLabel:document.getElementById('air-label'), airDot:document.getElementById('air-dot'), micLevel:document.getElementById('mic-level'), duckSlider:document.getElementById('duck-slider'), duckVal:document.getElementById('duck-val')
@@ -149,9 +153,12 @@ function initAdminPeer() {
             
             // Re-sync states after a small delay to ensure listener channel is established
             setTimeout(() => {
-                conn.send({type: 'metadata', track: lastTrackName});
-                if (isOnAir) conn.send({type: 'cadena_nacional', active: true});
-                if (isDjSync) conn.send({type: 'dj_sync', active: true});
+                try {
+                    conn.send({type: 'metadata', track: lastTrackName});
+                    if (isOnAir) conn.send({type: 'cadena_nacional', active: true});
+                    if (isDjSync) conn.send({type: 'dj_sync', active: true});
+                    if (chatHistory.length > 0) conn.send({type: 'chat_history', data: chatHistory});
+                } catch(e) {}
             }, 300);
             
             initAudio(); // ensure streamDest exists
@@ -166,10 +173,12 @@ function initAdminPeer() {
         
         conn.on('data', data => {
             if(data.type === 'chat') {
+                chatHistory.push(data);
+                if(chatHistory.length > 50) chatHistory.shift();
                 appendChat(data.name, data.text, false);
                 // Re-brodadcast to all other listeners
                 p2pConnections.forEach(c => {
-                    if(c.conn && c.conn.open && c.conn.peer !== conn.peer) c.conn.send(data);
+                    try { if(c.conn && c.conn.open && c.conn.peer !== conn.peer) c.conn.send(data); } catch(e){}
                 });
             }
         });
@@ -180,6 +189,13 @@ function initAdminPeer() {
         });
     });
     peer.on('error', err => console.error('Admin Peer error:', err));
+    
+    // Garbage Collector for Dead P2P Nodes
+    setInterval(() => {
+        const initialCount = p2pConnections.length;
+        p2pConnections = p2pConnections.filter(c => c.conn && c.conn.open);
+        if(p2pConnections.length !== initialCount) updateAdminListenerCount();
+    }, 5000);
 }
 
 let adminDataConn = null;
@@ -194,13 +210,20 @@ function connectToAdmin() {
     adminDataConn.on('open', () => {
          DOM.tuneStatus.textContent = 'MATRIZ GLOBAL ENLAZADA ✓';
          DOM.tuneStatus.className = 'url-status success';
+         if(DOM.btnManualTune) DOM.btnManualTune.style.display = 'block';
     });
     
     adminDataConn.on('data', data => {
-        if(data.type === 'cadena_nacional') toggleCadenaNacional(data.active);
-        else if(data.type === 'dj_sync') handleDjSyncRequest(data.active);
+        if(data.type === 'cadena_nacional') { if(!manualTuned) toggleCadenaNacional(data.active); else if(manualTuned && data.active) toggleCadenaNacional(true); } // force ON AIR even if tuned
+        else if(data.type === 'dj_sync') { if(!manualTuned) handleDjSyncRequest(data.active); } // ignore if tuned manually
         else if(data.type === 'tts') playLoquendo(data.text);
         else if(data.type === 'chat') appendChat(data.name, data.text, data.isHost);
+        else if(data.type === 'chat_history') {
+             if(DOM.chatBox) {
+                 DOM.chatBox.innerHTML = '<li style="color:#666; font-style:italic;">-- CHAT MUNDIAL P2P --</li>';
+                 data.data.forEach(msg => appendChat(msg.name, msg.text, msg.isHost));
+             }
+        }
         else if(data.type === 'metadata') {
             lastTrackName = data.track;
             if(isTuningIn) DOM.trackName.textContent = data.track.toUpperCase() + ' (🔴 ON AIR)';
@@ -321,8 +344,11 @@ function toggleCadenaNacional(active) {
     }
 }
 
-function playLoquendo(text) {
-    if(!window.speechSynthesis) return;
+function playLoquendo(text, onEndCallback = null) {
+    if(!window.speechSynthesis) {
+        if(onEndCallback) onEndCallback();
+        return;
+    }
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'es-ES';
     utterance.rate = 1.0;
@@ -334,6 +360,7 @@ function playLoquendo(text) {
     };
     utterance.onend = () => {
         audioParams.audioElement.volume = preCadenaVolume;
+        if(onEndCallback) onEndCallback();
     };
     
     window.speechSynthesis.speak(utterance);
@@ -343,12 +370,18 @@ function sendChatMsg() {
     const text = DOM.chatInput.value.trim();
     if(!text) return;
     const name = DOM.chatName.value.trim() || 'ANÓNIMO';
-    appendChat(name, text, isAdmin); // Render local
     
     if(isAdmin) {
-        p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'chat', text, name, isHost: true}));
-    } else if(adminDataConn && adminDataConn.open) {
-        adminDataConn.send({type: 'chat', text, name, isHost: false});
+        const msg = {type: 'chat', text, name, isHost: true};
+        chatHistory.push(msg);
+        if(chatHistory.length > 50) chatHistory.shift();
+        appendChat(name, text, true);
+        p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send(msg); }catch(e){} });
+    } else {
+        appendChat(name, text, false); // Render local for listener
+        if(adminDataConn && adminDataConn.open) {
+            adminDataConn.send({type: 'chat', text, name, isHost: false});
+        }
     }
     DOM.chatInput.value = '';
 }
@@ -427,13 +460,31 @@ function setupEvents() {
         DOM.btnChatSend.addEventListener('click', sendChatMsg);
         DOM.chatInput.addEventListener('keypress', e => { if(e.key === 'Enter') sendChatMsg(); });
     }
+    
+    // IA & TUNING Manual
+    if(DOM.btnIaLocutor) {
+        DOM.btnIaLocutor.addEventListener('click', () => {
+            isIaLocutor = !isIaLocutor;
+            DOM.btnIaLocutor.textContent = 'IA: ' + (isIaLocutor ? 'ON' : 'OFF');
+            DOM.btnIaLocutor.style.color = isIaLocutor ? 'var(--cyan)' : '';
+        });
+    }
+    if(DOM.btnManualTune) {
+        DOM.btnManualTune.addEventListener('click', () => {
+            manualTuned = !manualTuned;
+            DOM.btnManualTune.textContent = manualTuned ? '⏹ VOLVER A MÚSICA LOCAL' : '🎧 SINTONIZAR EMISORA';
+            DOM.btnManualTune.style.background = manualTuned ? 'var(--amber)' : 'var(--green)';
+            handleDjSyncRequest(manualTuned);
+        });
+    }
+
     if(DOM.btnDjSync) DOM.btnDjSync.addEventListener('click', () => {
         isDjSync = !isDjSync;
         DOM.btnDjSync.textContent = 'DJ SYNC: ' + (isDjSync ? 'ON' : 'OFF');
         DOM.btnDjSync.style.color = isDjSync ? '#00d4ff' : '';
-        p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'dj_sync', active: isDjSync}));
-        if(isDjSync && !isOnAir) p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'cadena_nacional', active: true}));
-        if(!isDjSync && !isOnAir) p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'cadena_nacional', active: false}));
+        p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'dj_sync', active: isDjSync}); }catch(e){} });
+        if(isDjSync && !isOnAir) p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'cadena_nacional', active: true}); }catch(e){} });
+        if(!isDjSync && !isOnAir) p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'cadena_nacional', active: false}); }catch(e){} });
     });
     if(DOM.btnRec) DOM.btnRec.addEventListener('click', toggleRecording);
     if(DOM.sfxBtns) DOM.sfxBtns.forEach(btn => btn.addEventListener('click', () => playSFX(btn.dataset.sfx)));
@@ -485,8 +536,36 @@ function setupEvents() {
 
     // Time + ended 
     audioParams.audioElement.addEventListener('timeupdate',()=>{const c=audioParams.audioElement.currentTime,d=audioParams.audioElement.duration;if(d)DOM.progSlider.value=(c/d)*100;DOM.timeDisplay.textContent=`${String(Math.floor(c/60)).padStart(2,'0')}:${String(Math.floor(c%60)).padStart(2,'0')}`;});
-    audioParams.audioElement.addEventListener('ended',()=>{if(isRepeat)loadTrack(currentIndex);else if(isShuffle)loadTrack(Math.floor(Math.random()*playlist.length));else if(currentIndex<playlist.length-1)loadTrack(currentIndex+1);else stopAudio();});
-
+    audioParams.audioElement.addEventListener('ended',()=>{
+        if(!playlist.length) return;
+        if(!isRepeat) {
+            // AUTO-DJ INTERCEPT
+            if(isAdmin && isIaLocutor && window.speechSynthesis) {
+                audioParams.isPlaying = false;
+                const prevTrack = playlist[currentIndex].name.replace('.mp3','').toUpperCase();
+                
+                let nextIndex = currentIndex < playlist.length - 1 ? currentIndex + 1 : 0;
+                if(isShuffle) nextIndex = Math.floor(Math.random()*playlist.length);
+                const nextTrack = playlist[nextIndex].name.replace('.mp3','').toUpperCase();
+                
+                const promptBlock = DOM.iaPrompt ? DOM.iaPrompt.value.trim() : '';
+                const script = `${promptBlock ? promptBlock + ', ' : ''} Acabamos de escuchar ${prevTrack}. Prepárate porque sigue el temazo: ${nextTrack}.`;
+                
+                playLoquendo(script, () => {
+                    loadTrack(nextIndex);
+                    playAudio();
+                });
+                p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send({type: 'tts', text: script}); }catch(e){} });
+                return;
+            }
+            
+            // Standard Flow
+            if(isShuffle) loadTrack(Math.floor(Math.random()*playlist.length));
+            else if(currentIndex<playlist.length-1)loadTrack(currentIndex+1);
+            else {stopAudio();return;}
+        }
+        playAudio();
+    });
     // Files & Drag Drop
     DOM.fileInput.addEventListener('change',e=>{handleFiles(e.target.files);e.target.value='';});
     if(DOM.folderInput)DOM.folderInput.addEventListener('change',e=>{handleFiles(e.target.files);e.target.value='';});

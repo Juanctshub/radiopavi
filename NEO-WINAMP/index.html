@@ -190,6 +190,7 @@
                      <p style="font-size:0.55rem; color:#888; margin-bottom:10px;">Estás enlazado a la matriz. Tu música será interrumpida si hay un aviso oficial de Cadena Nacional.</p>
                      
                      <div class="url-status success" id="tune-status" style="margin-bottom:8px;">ESCANENANDO MATRIZ...</div>
+                     <button class="win-btn" id="btn-manual-tune" style="width:100%; margin-bottom:10px; display:none; background:var(--green); color:#000; font-weight:bold;">🎧 SINTONIZAR EMISORA</button>
                      
                      <div style="margin-top:25px; border-top:1px solid #222; padding-top:10px; display:flex; gap:5px; align-items:center;">
                          <span style="font-size:0.5rem; color:#666;">MODO LOCUTOR:</span>
@@ -230,8 +231,15 @@
                     </div>
 
                     <!-- TTS LOQUENDO ENGINE -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                        <span style="font-size:0.5rem; color:var(--cyan); font-weight:bold;">🤖 AUTO-DJ (IA LOCUTOR)</span>
+                        <button class="url-btn" id="btn-ia-locutor" style="background:#222; font-size:0.5rem; padding:2px 5px;">IA: OFF</button>
+                    </div>
                     <div style="display:flex; gap:5px; margin-top:2px;">
-                        <input type="text" id="tts-input" class="cyber-input" placeholder="Escribe para anunciar por Loquendo System..." style="flex:1;">
+                        <input type="text" id="ia-prompt" class="cyber-input" placeholder="Firma IA. Ej: 'Aquí en Radio Pavi...'" style="flex:1;">
+                    </div>
+                    <div style="display:flex; gap:5px; margin-top:2px;">
+                        <input type="text" id="tts-input" class="cyber-input" placeholder="Anuncio manual directo..." style="flex:1;">
                         <button class="url-btn" id="btn-tts" title="Transmitir TTS" style="width:40px; padding:0; flex-shrink:0;">&#128498;</button>
                     </div>
                     <!-- SOUNDBOARD -->
