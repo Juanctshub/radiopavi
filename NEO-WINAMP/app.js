@@ -25,6 +25,10 @@ let streamGainNode = null;
 let globalAnalyser = null;
 let preCadenaVolume = 1.0;
 
+let isDjSync = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+
 // ON AIR
 let micStream = null, micSource = null, micGain = null, musicGain = null;
 let micAnalyser = null, isOnAir = false, micMeterFrame = null;
@@ -65,6 +69,10 @@ function queryDOM() {
         adminPwd:document.getElementById('admin-pwd'), btnLoginSubmit:document.getElementById('btn-login-submit'), loginError:document.getElementById('login-error'),
         bdListener:document.getElementById('bd-listener'), bdAdmin:document.getElementById('bd-admin'), listenerCount:document.getElementById('listener-count'),
         ttsInput:document.getElementById('tts-input'), btnTts:document.getElementById('btn-tts'),
+        
+        // INTERCOM & RECORDING
+        viewIntercom:document.getElementById('view-intercom'), chatBox:document.getElementById('chat-box'), chatName:document.getElementById('chat-name'), chatInput:document.getElementById('chat-input'), btnChatSend:document.getElementById('btn-chat-send'),
+        btnDjSync:document.getElementById('btn-dj-sync'), btnRec:document.getElementById('btn-rec'), sfxBtns:document.querySelectorAll('.sfx-btn'),
 
         // ON AIR
         btnOnAir:document.getElementById('btn-on-air'), airLabel:document.getElementById('air-label'), airDot:document.getElementById('air-dot'), micLevel:document.getElementById('mic-level'), duckSlider:document.getElementById('duck-slider'), duckVal:document.getElementById('duck-val')
@@ -151,6 +159,16 @@ function initAdminPeer() {
             }
         });
         
+        conn.on('data', data => {
+            if(data.type === 'chat') {
+                appendChat(data.name, data.text, false);
+                // Re-brodadcast to all other listeners
+                p2pConnections.forEach(c => {
+                    if(c.conn && c.conn.open && c.conn.peer !== conn.peer) c.conn.send(data);
+                });
+            }
+        });
+        
         conn.on('close', () => {
             p2pConnections = p2pConnections.filter(c => c.conn.peer !== conn.peer);
             updateAdminListenerCount();
@@ -175,10 +193,12 @@ function connectToAdmin() {
     
     adminDataConn.on('data', data => {
         if(data.type === 'cadena_nacional') toggleCadenaNacional(data.active);
+        else if(data.type === 'dj_sync') handleDjSyncRequest(data.active);
         else if(data.type === 'tts') playLoquendo(data.text);
+        else if(data.type === 'chat') appendChat(data.name, data.text, data.isHost);
         else if(data.type === 'metadata') {
             lastTrackName = data.track;
-            if(isTuningIn) DOM.trackName.textContent = data.track.toUpperCase() + ' (🔴 CADENA NACIONAL)';
+            if(isTuningIn) DOM.trackName.textContent = data.track.toUpperCase() + ' (🔴 ON AIR)';
         }
     });
     
@@ -249,13 +269,25 @@ function setupSilentStream(stream) {
     } catch(e) { console.error('SilentStream Graph Error:', e); }
 }
 
+function handleDjSyncRequest(active) {
+    if(active) {
+        if(audioParams.isPlaying) pauseAudio();
+        audioParams.audioElement.volume = 0; // Pure override
+        if(!isTuningIn) toggleCadenaNacional(true);
+        DOM.trackName.textContent = '🔊 DJ SYNC (Alta Fidelidad)';
+    } else {
+        audioParams.audioElement.volume = preCadenaVolume; // Restore
+        if(isTuningIn && !isOnAir) toggleCadenaNacional(false);
+    }
+}
+
 function toggleCadenaNacional(active) {
     isTuningIn = active;
     if(active) {
         if(listenerAudioCtx && listenerAudioCtx.state === 'suspended') listenerAudioCtx.resume();
         
         preCadenaVolume = audioParams.audioElement.volume;
-        audioParams.audioElement.volume = 0.1; // Duck local player
+        audioParams.audioElement.volume = isDjSync ? 0 : 0.1; // Duck local player
         
         if(remoteAudioPlayer) {
             remoteAudioPlayer.volume = 1.0;
@@ -264,13 +296,13 @@ function toggleCadenaNacional(active) {
         
         document.getElementById('net-badge').textContent = 'NET';
         DOM.timeDisplay.textContent = 'LIVE';
-        DOM.trackName.textContent = lastTrackName ? (lastTrackName.toUpperCase() + ' (🔴 CADENA NACIONAL)') : '🔴 CADENA NACIONAL EN CURSO';
+        DOM.trackName.textContent = lastTrackName ? (lastTrackName.toUpperCase() + ' (🔴 ON AIR)') : '🔴 SEÑAL GLOBAL';
         if(globalAnalyser) audioParams.analyser = globalAnalyser;
         startVisualizer();
-        DOM.player.style.boxShadow = '0 0 40px rgba(255,0,0,0.3)'; // Visual cue
+        DOM.player.style.boxShadow = '0 0 40px rgba(255,0,0,0.3)';
     } else {
-        audioParams.audioElement.volume = preCadenaVolume; // Restore local
-        if(remoteAudioPlayer) remoteAudioPlayer.volume = 0; // Mute WebRTC
+        audioParams.audioElement.volume = preCadenaVolume;
+        if(remoteAudioPlayer) remoteAudioPlayer.volume = 0;
         
         document.getElementById('net-badge').textContent = 'ST';
         const c = audioParams.audioElement.currentTime;
@@ -302,6 +334,67 @@ function playLoquendo(text) {
     window.speechSynthesis.speak(utterance);
 }
 
+function sendChatMsg() {
+    const text = DOM.chatInput.value.trim();
+    if(!text) return;
+    const name = DOM.chatName.value.trim() || 'ANÓNIMO';
+    appendChat(name, text, isAdmin);
+    
+    if(isAdmin) {
+        p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'chat', text, name, isHost: true}));
+    } else if(adminDataConn && adminDataConn.open) {
+        adminDataConn.send({type: 'chat', text, name, isHost: false});
+    }
+    DOM.chatInput.value = '';
+}
+function appendChat(name, text, isHost) {
+    if(!DOM.chatBox) return;
+    const li = document.createElement('li');
+    li.style.marginBottom = '4px';
+    li.innerHTML = `<strong style="color:${isHost ? 'var(--amber)' : 'var(--cyan)'}">[${name}]</strong>: ${text}`;
+    DOM.chatBox.appendChild(li);
+    DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+}
+
+function playSFX(url) {
+    if(!isAdmin) return;
+    initAudio();
+    fetch(url).then(r=>r.arrayBuffer()).then(b=>audioParams.audioContext.decodeAudioData(b)).then(buffer => {
+        const source = audioParams.audioContext.createBufferSource();
+        source.buffer = buffer;
+        const gain = audioParams.audioContext.createGain();
+        gain.gain.value = 1.0;
+        source.connect(gain);
+        gain.connect(audioParams.analyser); // to speakers
+        if(audioParams.streamDest) gain.connect(audioParams.streamDest); // to WEBRTC
+        source.start();
+    }).catch(e=>console.error("SFX:", e));
+}
+
+function toggleRecording() {
+    if(!isAdmin) return;
+    if(mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        DOM.btnRec.classList.remove('rec-active');
+        DOM.btnRec.innerHTML = '&#9679; REC';
+        return;
+    }
+    initAudio();
+    if(audioParams.streamDest) {
+        mediaRecorder = new MediaRecorder(audioParams.streamDest.stream, {mimeType: 'audio/webm'});
+        recordedChunks = [];
+        mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, {type: 'audio/webm'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `RADIO-BOSS-SESION-${Date.now()}.webm`;
+            a.click(); URL.revokeObjectURL(url);
+        };
+        mediaRecorder.start();
+        DOM.btnRec.classList.add('rec-active');
+    }
+}
+
 // ═══════════════════════════ EVENTS ═══════════════════════════
 function setupEvents() {
     // Auth & TTS
@@ -323,6 +416,22 @@ function setupEvents() {
         });
         DOM.ttsInput.addEventListener('keypress', e => { if(e.key === 'Enter') DOM.btnTts.click(); });
     }
+    
+    // Broadcast Extended Tools
+    if(DOM.btnChatSend) {
+        DOM.btnChatSend.addEventListener('click', sendChatMsg);
+        DOM.chatInput.addEventListener('keypress', e => { if(e.key === 'Enter') sendChatMsg(); });
+    }
+    if(DOM.btnDjSync) DOM.btnDjSync.addEventListener('click', () => {
+        isDjSync = !isDjSync;
+        DOM.btnDjSync.textContent = 'DJ SYNC: ' + (isDjSync ? 'ON' : 'OFF');
+        DOM.btnDjSync.style.color = isDjSync ? '#00d4ff' : '';
+        p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'dj_sync', active: isDjSync}));
+        if(isDjSync && !isOnAir) p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'cadena_nacional', active: true}));
+        if(!isDjSync && !isOnAir) p2pConnections.forEach(c => c.conn && c.conn.open && c.conn.send({type: 'cadena_nacional', active: false}));
+    });
+    if(DOM.btnRec) DOM.btnRec.addEventListener('click', toggleRecording);
+    if(DOM.sfxBtns) DOM.sfxBtns.forEach(btn => btn.addEventListener('click', () => playSFX(btn.dataset.sfx)));
 
     // Transport (Resume Audio Contexts if suspended to comply with autoplay policies)
     const resumeCtx = () => { if(audioParams.audioContext && audioParams.audioContext.state === 'suspended') audioParams.audioContext.resume(); if(listenerAudioCtx && listenerAudioCtx.state === 'suspended') listenerAudioCtx.resume(); };
@@ -390,6 +499,7 @@ function setupEvents() {
             DOM.viewLocal.style.display=tab.dataset.target==='local'?'flex':'none';
             DOM.viewCloud.style.display=tab.dataset.target==='cloud'?'flex':'none';
             DOM.viewBroadcast.style.display=tab.dataset.target==='broadcast'?'flex':'none';
+            if(DOM.viewIntercom) DOM.viewIntercom.style.display=tab.dataset.target==='intercom'?'flex':'none';
         });
     });
 

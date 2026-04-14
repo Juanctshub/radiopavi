@@ -146,10 +146,11 @@
 
         <!-- ======== PLAYLIST DECK ======== -->
         <div class="deck playlist-deck" id="playlist-deck">
-            <div class="tabs-bar">
-                <button class="tab active" data-target="local">LOCAL MEMORY</button>
+            <div class="nav-bar">
+                <button class="tab active" data-target="local">LOCAL DRIVES</button>
                 <button class="tab" data-target="cloud">NET TERMINAL</button>
-                <button class="tab" data-target="broadcast" style="color:var(--amber);">CADENA NACIONAL</button>
+                <button class="tab" data-target="broadcast" style="color:var(--amber); border-bottom-color:var(--amber);">CADENA NAC.</button>
+                <button class="tab" data-target="intercom" style="color:var(--cyan); border-bottom-color:var(--cyan);">INTERCOM</button>
             </div>
             
             <!-- LOCAL -->
@@ -200,7 +201,13 @@
 
                  <!-- ADMIN VIEW (Hidden by default) -->
                  <div id="bd-admin" class="admin-only" style="display:none; flex-direction:column; gap:8px;">
-                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0; color:var(--amber);">&#9819; PANEL DE LOCUTOR</div>
+                     <div style="display:flex; justify-content:space-between; align-items:center;">
+                         <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0; color:var(--amber);">&#9819; RADIO BOSS</div>
+                         <div style="display:flex; gap:5px;">
+                             <button class="url-btn" id="btn-dj-sync" title="Fuerza un enlazamiento puro y pausa la música de todos los oyentes." style="background:#222; font-size:0.5rem; padding:2px 5px;">DJ SYNC: OFF</button>
+                             <button class="url-btn" id="btn-rec" title="Graba toda la mezcla maestra de la Estación." style="background:#222; font-size:0.5rem; padding:2px 5px; color:#ff4444; border-color:#ff4444;">&#9679; REC</button>
+                         </div>
+                     </div>
                      <p style="font-size:0.55rem; color:#888; margin-bottom:5px;">Activa ON AIR para forzar la Cadena Nacional en los oyentes.</p>
                      
                      <!-- ON AIR STRIP INLINE -->
@@ -227,6 +234,26 @@
                         <input type="text" id="tts-input" class="cyber-input" placeholder="Escribe para anunciar por Loquendo System..." style="flex:1;">
                         <button class="url-btn" id="btn-tts" title="Transmitir TTS" style="width:40px; padding:0; flex-shrink:0;">&#128498;</button>
                     </div>
+                    <!-- SOUNDBOARD -->
+                    <div style="display:flex; gap:3px; margin-top:2px;">
+                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/alarms/air_horn.ogg" title="Air Horn">🚨 HORN</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/crowds/light_applause.ogg" title="Applause">👏 CLAP</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/impacts/crash.ogg" title="Explosion">💣 BOOM</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/science_fiction/teleport.ogg" title="Teleport">⚡ ZAP</button>
+                        <button class="url-btn sfx-btn" data-sfx="https://actions.google.com/sounds/v1/cartoon/slip_fart.ogg" title="Error">💨 FAIL</button>
+                    </div>
+                 </div>
+            </div>
+
+            <!-- INTERCOM -->
+            <div class="panel" id="view-intercom" style="display:none; padding:5px; flex-direction:column; height:200px;">
+                 <ul id="chat-box" style="flex:1; background:#000; border:1px solid #333; margin:0 0 5px 0; overflow-y:auto; list-style:none; padding:5px; font-size:0.55rem; color:#ccc; font-family:var(--mono);">
+                    <li style="color:#666; font-style:italic;">-- INTERCOM ENCRIPTADO P2P --</li>
+                 </ul>
+                 <div style="display:flex; gap:5px;">
+                     <input type="text" id="chat-name" class="cyber-input" placeholder="Alias..." style="width:70px;">
+                     <input type="text" id="chat-input" class="cyber-input" placeholder="Mensaje a mundial..." style="flex:1;">
+                     <button class="url-btn" id="btn-chat-send" style="padding:0 8px;">ENVIAR</button>
                  </div>
             </div>
 

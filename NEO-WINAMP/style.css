@@ -232,6 +232,12 @@ canvas#waveform-seek{position:absolute;inset:0;width:100%;height:100%;pointer-ev
 .url-status.success{color:var(--green);}
 .url-status.error{color:var(--red);}
 
+/* ═══════════ SOUNDBOARD & REC ═══════════ */
+.sfx-btn{flex:1; padding:4px 0; font-size:0.45rem; background:rgba(0,0,0,0.5); font-weight:bold; letter-spacing:0px;}
+.sfx-btn:hover{background:var(--amber); color:#000;}
+.rec-active{background:var(--red) !important; color:#000 !important; animation:recFlash 1s infinite alternate; border-color:var(--red) !important; box-shadow:0 0 10px var(--red); text-shadow:none;}
+@keyframes recFlash{from{background:var(--red); color:#000;} to{background:#500; color:#fff;}}
+
 /* ═══════════ MINIMIZE ═══════════ */
 .player-container.minimized .main-deck .display-area,
 .player-container.minimized .main-deck .controls-row,
