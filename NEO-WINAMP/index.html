@@ -169,8 +169,10 @@
                 <button class="tab" data-target="cloud">NET TERMINAL</button>
                 <button class="tab" data-target="broadcast"
                     style="color:var(--amber); border-bottom-color:var(--amber);">CADENA NAC.</button>
-                <button class="tab" data-target="intercom"
-                    style="color:var(--cyan); border-bottom-color:var(--cyan);">CHAT</button>
+                <button class="tab" id="chat-tab-btn" data-target="intercom"
+                    style="color:var(--cyan); border-bottom-color:var(--cyan); position:relative;">
+                    CHAT <span id="chat-badge" style="display:none; position:absolute; top:-4px; right:-8px; background:var(--red); color:#fff; font-size:0.45rem; padding:2px 4px; border-radius:50%; font-weight:bold; box-shadow:0 0 5px var(--red);">+</span>
+                </button>
             </div>
 
             <!-- LOCAL -->

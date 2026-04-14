@@ -478,6 +478,26 @@ function playLoquendo(text, onEndCallback = null) {
     window.speechSynthesis.speak(utterance);
 }
 
+function playChatBlip() {
+    try {
+        const ctx = listenerAudioCtx || audioParams.audioContext;
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.2);
+    } catch(e) {}
+}
+
 function sendChatMsg() {
     const text = DOM.chatInput.value.trim();
     if (!text) return;
@@ -497,6 +517,7 @@ function sendChatMsg() {
     }
     DOM.chatInput.value = '';
 }
+
 function appendChat(name, text, isHost) {
     if (!DOM.chatBox) return;
     const li = document.createElement('li');
@@ -504,6 +525,12 @@ function appendChat(name, text, isHost) {
     li.style.display = 'flex';
     li.style.flexDirection = 'column';
     li.style.alignItems = isHost ? 'flex-end' : 'flex-start';
+    
+    if (DOM.viewIntercom && DOM.viewIntercom.style.display !== 'flex') {
+        const badge = document.getElementById('chat-badge');
+        if(badge) badge.style.display = 'inline-block';
+    }
+    playChatBlip();
     
     const bubble = document.createElement('div');
     bubble.style.maxWidth = '85%';
@@ -515,10 +542,14 @@ function appendChat(name, text, isHost) {
     bubble.style.borderLeft = isHost ? 'none' : '3px solid var(--cyan)';
     bubble.style.borderRight = isHost ? '3px solid var(--red)' : 'none';
     
-    bubble.innerHTML = `<span style="font-weight:bold; color:${isHost ? 'var(--red)' : 'var(--cyan)'}; font-size:0.55rem; display:block; margin-bottom:2px;">${name}</span> <span style="color:#fff;">${text}</span>`;
+    const d = new Date();
+    const timeStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    
+    bubble.innerHTML = `<span style="font-weight:bold; color:${isHost ? 'var(--red)' : 'var(--cyan)'}; font-size:0.55rem; display:block; margin-bottom:2px;">[${timeStr}] ${name}</span> <span style="color:#fff; font-family:var(--font-primary); font-size:0.65rem;">${text}</span>`;
     
     li.appendChild(bubble);
     DOM.chatBox.appendChild(li);
+    DOM.chatBox.style.scrollBehavior = 'smooth';
     DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
 }
 
@@ -722,7 +753,14 @@ function setupEvents() {
             DOM.viewLocal.style.display = tab.dataset.target === 'local' ? 'flex' : 'none';
             DOM.viewCloud.style.display = tab.dataset.target === 'cloud' ? 'flex' : 'none';
             DOM.viewBroadcast.style.display = tab.dataset.target === 'broadcast' ? 'flex' : 'none';
-            if (DOM.viewIntercom) DOM.viewIntercom.style.display = tab.dataset.target === 'intercom' ? 'flex' : 'none';
+            if (DOM.viewIntercom) {
+                DOM.viewIntercom.style.display = tab.dataset.target === 'intercom' ? 'flex' : 'none';
+                if (tab.dataset.target === 'intercom') {
+                    const badge = document.getElementById('chat-badge');
+                    if (badge) badge.style.display = 'none';
+                    if (DOM.chatBox) DOM.chatBox.scrollTop = DOM.chatBox.scrollHeight;
+                }
+            }
         });
     });
 
