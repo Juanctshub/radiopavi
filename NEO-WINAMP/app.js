@@ -194,7 +194,7 @@ function initAdminPeer() {
                 
                 // Re-brodadcast to all other listeners
                 p2pConnections.forEach(c => {
-                    try { if(c.conn && c.conn.open && c.conn.peer !== conn.peer) c.conn.send(data); } catch(e){}
+                    try { if(c.conn && c.conn.peer !== conn.peer) c.conn.send(data); } catch(e){ console.warn('P2P Reb:', e); }
                 });
             }
         });
@@ -449,11 +449,11 @@ function sendChatMsg() {
         chatHistory.push(msg);
         if(chatHistory.length > 50) chatHistory.shift();
         appendChat(name, text, true);
-        p2pConnections.forEach(c => { try { if(c.conn && c.conn.open) c.conn.send(msg); }catch(e){} });
+        p2pConnections.forEach(c => { try { if(c.conn) c.conn.send(msg); }catch(e){ console.warn('P2P Host:', e); } });
     } else {
         appendChat(name, text, false); // Render local for listener
-        if(adminDataConn && adminDataConn.open) {
-            adminDataConn.send({type: 'chat', text, name, isHost: false});
+        if(adminDataConn) {
+            try { adminDataConn.send({type: 'chat', text, name, isHost: false}); } catch(e) { console.warn('P2P List:', e); }
         }
     }
     DOM.chatInput.value = '';
