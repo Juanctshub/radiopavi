@@ -241,3 +241,29 @@ canvas#waveform-seek{position:absolute;inset:0;width:100%;height:100%;pointer-ev
 .player-container.minimized .eq-deck,
 .player-container.minimized .cfg-deck,
 .player-container.minimized .playlist-deck{display:none !important;max-height:0 !important;opacity:0 !important;}
+
+/* ═══════════ MOBILE RESPONSIVE ═══════════ */
+@media (max-width: 600px) {
+    body { padding: 0; align-items: flex-start; overflow-x: hidden; }
+    .player-container { width: 100vw; min-width: 320px; box-sizing: border-box; }
+    .deck { border-radius: 0; border-left: none; border-right: none; margin-bottom: 4px; padding: 6px 8px; }
+    .display-content { grid-template-columns: 1fr; grid-template-rows: auto auto auto; gap: 4px; }
+    .time-section { grid-column: 1; grid-row: 1; min-height: 40px; }
+    .viz-section { grid-column: 1; grid-row: 2; }
+    .track-info-bar { grid-column: 1; grid-row: 3; }
+    .controls-row { flex-direction: column; align-items: stretch; gap: 6px; }
+    .transport { justify-content: space-between; }
+    .tbtn { flex: 1; height: 35px; }
+    .sliders-col { flex-direction: row; gap: 10px; }
+    .slider-row { flex: 1; }
+    .toggles-col { display: flex; justify-content: space-between; }
+    .toggle-btn { flex: 1; height: 24px; font-size: 0.6rem; }
+    .seek-bar { height: 30px; }
+    .air-strip { flex-direction: column; align-items: stretch; gap: 6px; }
+    .air-btn { height: 35px; justify-content: center; }
+    .air-mix { justify-content: space-between; }
+    .eq-bands { flex-wrap: wrap; height: auto; padding: 10px; }
+    .eq-slider { height: 60px; }
+    .swatch-row { justify-content: center; }
+    .playlist-box { min-height: 150px; }
+}

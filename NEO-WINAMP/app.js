@@ -21,6 +21,9 @@ let lastTrackName = 'RADIO-PAVI >> READY';
 let isAdmin = false;
 let isTuningIn = false;
 let listenerAudioCtx = null;
+let streamGainNode = null;
+let globalAnalyser = null;
+let preCadenaVolume = 1.0;
 
 // ON AIR
 let micStream = null, micSource = null, micGain = null, musicGain = null;
@@ -58,9 +61,10 @@ function queryDOM() {
         cfgScanlines:document.getElementById('cfg-scanlines'), cfgGlow:document.getElementById('cfg-glow'), swatchRow:document.getElementById('swatch-row'), vizModes:document.getElementById('viz-modes'), bgModes:document.getElementById('bg-modes'),
         
         // BROADCAST & ROLES
-        tuneStatus:document.getElementById('tune-status'), btnTuneIn:document.getElementById('btn-tune-in'),
+        tuneStatus:document.getElementById('tune-status'),
         adminPwd:document.getElementById('admin-pwd'), btnLoginSubmit:document.getElementById('btn-login-submit'), loginError:document.getElementById('login-error'),
         bdListener:document.getElementById('bd-listener'), bdAdmin:document.getElementById('bd-admin'), listenerCount:document.getElementById('listener-count'),
+        ttsInput:document.getElementById('tts-input'), btnTts:document.getElementById('btn-tts'),
 
         // ON AIR
         btnOnAir:document.getElementById('btn-on-air'), airLabel:document.getElementById('air-label'), airDot:document.getElementById('air-dot'), micLevel:document.getElementById('mic-level'), duckSlider:document.getElementById('duck-slider'), duckVal:document.getElementById('duck-val')
@@ -154,96 +158,141 @@ function initAdminPeer() {
 function initClientPeer() {
     peer = new Peer();
     peer.on('open', id => {
-        DOM.tuneStatus.textContent = 'SEÑAL ENCONTRADA';
-        DOM.tuneStatus.style.color = 'var(--green)';
-        DOM.btnTuneIn.style.display = 'inline-block';
+        DOM.tuneStatus.textContent = 'CONECTANDO A MATRIZ...';
+        DOM.tuneStatus.className = 'url-status loading';
+        
+        const conn = peer.connect('radiopavi-admin');
+        conn.on('open', () => {
+             DOM.tuneStatus.textContent = 'MATRIZ GLOBAL ENLAZADA ✓';
+             DOM.tuneStatus.className = 'url-status success';
+        });
+        
+        conn.on('data', data => {
+            if(data.type === 'cadena_nacional') {
+                toggleCadenaNacional(data.active);
+            } else if(data.type === 'tts') {
+                playLoquendo(data.text);
+            } else if(data.type === 'metadata') {
+                lastTrackName = data.track;
+                if(isTuningIn) DOM.trackName.textContent = data.track.toUpperCase() + ' (🔴 CADENA NACIONAL)';
+            }
+        });
+        
+        conn.on('close', () => {
+             DOM.tuneStatus.textContent = 'MATRIZ OFFLINE';
+             DOM.tuneStatus.className = 'url-status error';
+             if(isTuningIn) toggleCadenaNacional(false);
+        });
     });
 
     peer.on('error', err => {
-        DOM.tuneStatus.textContent = 'SEÑAL NO ENCONTRADA (Offline)';
-        DOM.tuneStatus.style.color = 'var(--red)';
-        DOM.btnTuneIn.style.display = 'none';
+        DOM.tuneStatus.textContent = 'SIN CONEXIÓN (Modo Personal)';
+        DOM.tuneStatus.className = 'url-status error';
     });
 
     peer.on('call', call => {
         call.answer(); 
         call.on('stream', remoteStream => {
-            console.log('Received Live Stream');
-            startListenerWebAudio(remoteStream);
+            setupSilentStream(remoteStream);
         });
     });
 }
 
-function stopListenerWebAudio() {
-    isTuningIn = false;
-    if(listenerAudioCtx) {
-        listenerAudioCtx.close();
-        listenerAudioCtx = null;
+function setupSilentStream(stream) {
+    if(!listenerAudioCtx) {
+        listenerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    // Restore normal viz
-    initAudio(); // recreates context if needed
-    document.getElementById('net-badge').textContent = 'ST';
-    DOM.timeDisplay.textContent = '00:00';
-    DOM.btnTuneIn.textContent = 'SINTONIZAR TRANSMISIÓN';
-    DOM.btnTuneIn.style.background = 'var(--green)';
-    DOM.trackName.textContent = 'SEÑAL DESCONECTADA';
+    const source = listenerAudioCtx.createMediaStreamSource(stream);
+    streamGainNode = listenerAudioCtx.createGain();
+    streamGainNode.gain.value = 0; // Silent until Cadena Nacional
+    
+    globalAnalyser = listenerAudioCtx.createAnalyser();
+    globalAnalyser.fftSize = 256;
+    
+    source.connect(globalAnalyser);
+    globalAnalyser.connect(streamGainNode);
+    streamGainNode.connect(listenerAudioCtx.destination);
 }
 
-function startListenerWebAudio(stream) {
-    if(audioParams.isPlaying) stopAudio(); // pause local player
-    isTuningIn = true;
+function toggleCadenaNacional(active) {
+    isTuningIn = active;
+    if(active) {
+        if(listenerAudioCtx && listenerAudioCtx.state === 'suspended') listenerAudioCtx.resume();
+        
+        preCadenaVolume = audioParams.audioElement.volume;
+        audioParams.audioElement.volume = 0.1; // Duck local player
+        if(streamGainNode) streamGainNode.gain.value = 1.0;
+        
+        document.getElementById('net-badge').textContent = 'NET';
+        DOM.timeDisplay.textContent = 'LIVE';
+        DOM.trackName.textContent = lastTrackName ? (lastTrackName.toUpperCase() + ' (🔴 CADENA NACIONAL)') : '🔴 CADENA NACIONAL EN CURSO';
+        if(globalAnalyser) audioParams.analyser = globalAnalyser;
+        startVisualizer();
+        DOM.player.style.boxShadow = '0 0 40px rgba(255,0,0,0.3)'; // Visual cue
+    } else {
+        audioParams.audioElement.volume = preCadenaVolume; // Restore local
+        if(streamGainNode) streamGainNode.gain.value = 0; // Mute WebRTC
+        
+        document.getElementById('net-badge').textContent = 'ST';
+        const c = audioParams.audioElement.currentTime;
+        DOM.timeDisplay.textContent = `${String(Math.floor(c/60)).padStart(2,'0')}:${String(Math.floor(c%60)).padStart(2,'0')}`;
+        
+        if(currentIndex >= 0 && playlist[currentIndex]) DOM.trackName.textContent = playlist[currentIndex].name;
+        else DOM.trackName.textContent = 'RADIO-PAVI >> READY';
+        
+        if(audioParams.localAnalyser) audioParams.analyser = audioParams.localAnalyser;
+        DOM.player.style.boxShadow = '';
+    }
+}
+
+function playLoquendo(text) {
+    if(!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.rate = 1.0;
+    utterance.pitch = 0.9; // Loquendo-ish
     
-    listenerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    listenerAudioCtx.resume(); 
-
-    const source = listenerAudioCtx.createMediaStreamSource(stream);
-    const analyser = listenerAudioCtx.createAnalyser();
-    analyser.fftSize = 256;
-
-    source.connect(analyser);
-    analyser.connect(listenerAudioCtx.destination);
-
-    // Swap visualizer target
-    audioParams.analyser = analyser; 
+    utterance.onstart = () => {
+        preCadenaVolume = audioParams.audioElement.volume;
+        audioParams.audioElement.volume = 0.1;
+    };
+    utterance.onend = () => {
+        audioParams.audioElement.volume = preCadenaVolume;
+    };
     
-    document.getElementById('net-badge').textContent = 'NET';
-    DOM.timeDisplay.textContent = 'LIVE';
-    startVisualizer(); // Will pull from listenerAudioCtx's analyser
+    window.speechSynthesis.speak(utterance);
 }
 
 // ═══════════════════════════ EVENTS ═══════════════════════════
 function setupEvents() {
-    // Auth & Tune In
+    // Auth & TTS
     DOM.btnLoginSubmit.addEventListener('click', () => {
         if(DOM.adminPwd.value === 'admin123') grantAdminPrivileges();
         else DOM.loginError.textContent = 'Acceso Denegado';
     });
 
-    DOM.btnTuneIn.addEventListener('click', () => {
-        if(isTuningIn) {
-            stopListenerWebAudio();
-            return;
-        }
-        DOM.tuneStatus.textContent = 'SINTONIZANDO...';
-        DOM.btnTuneIn.textContent = 'DESCONECTAR';
-        DOM.btnTuneIn.style.background = 'var(--red)';
-        
-        const conn = peer.connect('radiopavi-admin');
-        conn.on('open', () => console.log('Data link to admin open'));
-        conn.on('data', data => {
-            if(data.type === 'metadata') {
-                DOM.trackName.textContent = data.track.toUpperCase() + ' (LIVE)';
-            }
+    if(DOM.btnTts) {
+        DOM.btnTts.addEventListener('click', () => {
+            if(!isAdmin) return;
+            const txt = DOM.ttsInput.value.trim();
+            if(!txt) return;
+            playLoquendo(txt); // Play locally
+            p2pConnections.forEach(c => {
+                if(c.conn && c.conn.open) c.conn.send({type: 'tts', text: txt});
+            });
+            DOM.ttsInput.value = '';
         });
-        conn.on('close', () => stopListenerWebAudio());
-    });
+        DOM.ttsInput.addEventListener('keypress', e => { if(e.key === 'Enter') DOM.btnTts.click(); });
+    }
 
-    // Transport
-    DOM.btnPlay.addEventListener('click',()=>{flash(DOM.btnPlay);if(isTuningIn) stopListenerWebAudio(); if(playlist.length===0)DOM.fileInput.click();else if(!audioParams.isPlaying){if(currentIndex===-1)loadTrack(0);else playAudio();}});
-    DOM.btnPause.addEventListener('click',()=>{flash(DOM.btnPause);if(isTuningIn) stopListenerWebAudio(); if(audioParams.isPlaying)pauseAudio();else if(currentIndex>=0)playAudio();});
-    DOM.btnStop.addEventListener('click',()=>{flash(DOM.btnStop);if(isTuningIn) stopListenerWebAudio(); stopAudio();});
-    DOM.btnNext.addEventListener('click',()=>{flash(DOM.btnNext);if(isTuningIn) stopListenerWebAudio(); if(!playlist.length)return;if(isShuffle)loadTrack(Math.floor(Math.random()*playlist.length));else if(currentIndex<playlist.length-1)loadTrack(currentIndex+1);else loadTrack(0);});
-    DOM.btnPrev.addEventListener('click',()=>{flash(DOM.btnPrev);if(isTuningIn) stopListenerWebAudio(); if(!playlist.length)return;if(audioParams.audioElement.currentTime>3)audioParams.audioElement.currentTime=0;else if(currentIndex>0)loadTrack(currentIndex-1);else audioParams.audioElement.currentTime=0;});
+    // Transport (Resume Audio Contexts if suspended to comply with autoplay policies)
+    const resumeCtx = () => { if(audioParams.audioContext && audioParams.audioContext.state === 'suspended') audioParams.audioContext.resume(); if(listenerAudioCtx && listenerAudioCtx.state === 'suspended') listenerAudioCtx.resume(); };
+    
+    DOM.btnPlay.addEventListener('click',()=>{flash(DOM.btnPlay);resumeCtx();if(playlist.length===0)DOM.fileInput.click();else if(!audioParams.isPlaying){if(currentIndex===-1)loadTrack(0);else playAudio();}});
+    DOM.btnPause.addEventListener('click',()=>{flash(DOM.btnPause);resumeCtx();if(audioParams.isPlaying)pauseAudio();else if(currentIndex>=0)playAudio();});
+    DOM.btnStop.addEventListener('click',()=>{flash(DOM.btnStop);resumeCtx();stopAudio();});
+    DOM.btnNext.addEventListener('click',()=>{flash(DOM.btnNext);resumeCtx();if(!playlist.length)return;if(isShuffle)loadTrack(Math.floor(Math.random()*playlist.length));else if(currentIndex<playlist.length-1)loadTrack(currentIndex+1);else loadTrack(0);});
+    DOM.btnPrev.addEventListener('click',()=>{flash(DOM.btnPrev);resumeCtx();if(!playlist.length)return;if(audioParams.audioElement.currentTime>3)audioParams.audioElement.currentTime=0;else if(currentIndex>0)loadTrack(currentIndex-1);else audioParams.audioElement.currentTime=0;});
     DOM.btnEject.addEventListener('click',()=>{flash(DOM.btnEject);DOM.fileInput.click();});
 
     // Window
@@ -361,8 +410,9 @@ function drawIdleScreen(){if(!ctx||!DOM.canvas)return;ctx.fillStyle='rgb(0,4,0)'
 function initAudio() {
     if (audioParams.audioContext) return;
     audioParams.audioContext = new (window.AudioContext||window.webkitAudioContext)();
-    audioParams.analyser = audioParams.audioContext.createAnalyser();
-    audioParams.analyser.fftSize = 256;
+    audioParams.localAnalyser = audioParams.audioContext.createAnalyser();
+    audioParams.analyser = audioParams.localAnalyser;
+    audioParams.localAnalyser.fftSize = 256;
     audioParams.source = audioParams.audioContext.createMediaElementSource(audioParams.audioElement);
     audioParams.panner = audioParams.audioContext.createStereoPanner();
 
@@ -463,6 +513,11 @@ async function goOnAir() {
     if(DOM.indAir) DOM.indAir.classList.add('on');
     startMicMeter();
     if (!audioParams.isPlaying) startMicVisualizer();
+    
+    // Broadcast Cadena Nacional Flag
+    p2pConnections.forEach(c => {
+        if(c.conn && c.conn.open) c.conn.send({type: 'cadena_nacional', active: true});
+    });
 }
 
 function goOffAir() {
@@ -475,6 +530,11 @@ function goOffAir() {
     if(DOM.btnOnAir) DOM.btnOnAir.classList.remove('active'); if(DOM.airLabel) DOM.airLabel.textContent = 'ON AIR';
     if(DOM.indAir) DOM.indAir.classList.remove('on');
     stopMicMeter();
+    
+    // Disable Cadena Nacional Flag
+    p2pConnections.forEach(c => {
+        if(c.conn && c.conn.open) c.conn.send({type: 'cadena_nacional', active: false});
+    });
 }
 
 function startMicMeter() {

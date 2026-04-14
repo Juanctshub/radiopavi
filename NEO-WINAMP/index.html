@@ -185,11 +185,10 @@
                  
                  <!-- LISTENER VIEW -->
                  <div id="bd-listener">
-                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0;">&#128225; SEÑAL EN VIVO</div>
-                     <p style="font-size:0.55rem; color:#888; margin-bottom:10px;">Sintoniza la transmisión maestra de RADIO-PAVI.</p>
+                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0;">&#128225; RED GLOBAL PAVI</div>
+                     <p style="font-size:0.55rem; color:#888; margin-bottom:10px;">Estás enlazado a la matriz. Tu música será interrumpida si hay un aviso oficial de Cadena Nacional.</p>
                      
-                     <div class="url-status" id="tune-status" style="margin-bottom:8px;">ESCANENANDO FRECUENCIAS...</div>
-                     <button class="pl-btn" id="btn-tune-in" style="width:100%; height:35px; background:var(--green); color:#000; font-size:0.7rem; display:none; box-shadow:0 0 10px var(--green-glow);">SINTONIZAR TRANSMISIÓN</button>
+                     <div class="url-status success" id="tune-status" style="margin-bottom:8px;">ESCANENANDO MATRIZ...</div>
                      
                      <div style="margin-top:25px; border-top:1px solid #222; padding-top:10px; display:flex; gap:5px; align-items:center;">
                          <span style="font-size:0.5rem; color:#666;">MODO LOCUTOR:</span>
@@ -201,8 +200,8 @@
 
                  <!-- ADMIN VIEW (Hidden by default) -->
                  <div id="bd-admin" class="admin-only" style="display:none; flex-direction:column; gap:8px;">
-                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0; color:var(--amber);">&#9819; PANEL DE TRANSMISIÓN</div>
-                     <p style="font-size:0.55rem; color:#888; margin-bottom:5px;">La música local y tu voz están siendo transmitidas en este momento.</p>
+                     <div class="deck-label" style="text-align:left; border-bottom:none; margin-bottom:0; color:var(--amber);">&#9819; PANEL DE LOCUTOR</div>
+                     <p style="font-size:0.55rem; color:#888; margin-bottom:5px;">Activa ON AIR para forzar la Cadena Nacional en los oyentes.</p>
                      
                      <!-- ON AIR STRIP INLINE -->
                      <div class="air-strip inner-air" id="air-strip">
@@ -221,6 +220,12 @@
                             <input type="range" id="duck-slider" min="0" max="50" value="20" step="1" class="cyber-slider air-slider">
                             <span class="duck-val" id="duck-val">20%</span>
                         </div>
+                    </div>
+
+                    <!-- TTS LOQUENDO ENGINE -->
+                    <div style="display:flex; gap:5px; margin-top:2px;">
+                        <input type="text" id="tts-input" class="cyber-input" placeholder="Escribe para anunciar por Loquendo System..." style="flex:1;">
+                        <button class="url-btn" id="btn-tts" title="Transmitir TTS" style="width:40px; padding:0; flex-shrink:0;">&#128498;</button>
                     </div>
                  </div>
             </div>
