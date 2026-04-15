@@ -40,7 +40,20 @@ let aiMemory = [];
 let aiPeriodicTimer = null;
 let aiChatCooldown = false;
 let aiLastSongComment = 0;
-const AI_PERSONALITY = `Eres PAVI-BOT, el locutor mas chimba y arrecho de Radio PAVI. Hablas como un locutor latino de radio urbana, con mucha energia, sin censura, con humor callejero y buena vibra. Usas jerga latina (parcero, vale, compa, mano). Eres irreverente pero carismatico. Tus respuestas son CORTAS (1-2 oraciones max para que el TTS no sea eterno). Nunca uses emojis ni asteriscos ni formato markdown. Habla natural como si estuvieras al aire en vivo.`;
+let aiResponseCount = 0;
+let radioFilterOn = true;
+let radioFilterNodes = {};
+
+const AI_PERSONALITY = `Eres PAVI-BOT, el locutor mas chimba de Radio PAVI. Reglas de comportamiento:
+1. Hablas como un locutor latino real de radio urbana. Con energia, humor callejero, jerga latina (parcero, vale, compa, mano), sin censura pero con carisma.
+2. Tus respuestas son CORTAS: maximo 1-2 oraciones. El TTS se demora si hablas mucho.
+3. NO respondas a TODOS los mensajes del chat. Si hay varios usuarios hablando, escoge al mas interesante o haz UN comentario general. No seas spam.
+4. Haz preguntas a la audiencia a veces. "Que quieren escuchar?", "Les esta gustando esto?", etc. Sé conversacional.
+5. Si alguien te pregunta algo, responde naturalmente como si fueras una persona real, no un robot.
+6. Nunca uses emojis, asteriscos, ni formato markdown.
+7. Si quieres cambiar de cancion, escribe al FINAL: [CAMBIAR_CANCION] y opcionalmente [CANCION:numero] (1-based). Solo hazlo cuando tenga sentido.
+8. A veces simplemente calla y deja sonar la musica. No hables cada vez que puedas.
+9. Recuerda conversaciones anteriores y reacciona a lo que paso antes.`;
 
 // ON AIR
 let micStream = null, micSource = null, micGain = null, musicGain = null;
@@ -53,7 +66,7 @@ let themeColor = '#00ff41';
 const EQ_BANDS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 const EQ_LABELS = ['32', '64', '125', '250', '500', '1K', '2K', '4K', '8K', '16K'];
 const EQ_PRESETS = { flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bass: [8, 6, 4, 2, 0, -1, -1, -1, -1, -2], rock: [5, 4, 3, 0, -1, -1, 2, 3, 4, 4], electronic: [6, 5, 0, -2, -4, 0, 4, 4, 5, 6], vocal: [-2, -3, -2, 2, 5, 5, 3, 1, -1, -2] };
-const THEMES = { matrix: { color: '#00ff41', name: 'MATRIX' }, amber: { color: '#ffa500', name: 'AMBER' }, cyber: { color: '#00d4ff', name: 'CYBER' }, neon: { color: '#bf40ff', name: 'NEON' }, rose: { color: '#ff1493', name: 'ROSE' }, blood: { color: '#ff3333', name: 'BLOOD' }, ice: { color: '#b0c4ff', name: 'ICE' } };
+const THEMES = { matrix: { color: '#00ff41', name: 'MATRIX' }, amber: { color: '#ffa500', name: 'AMBER' }, cyber: { color: '#00d4ff', name: 'CYBER' }, neon: { color: '#bf40ff', name: 'NEON' }, rose: { color: '#ff1493', name: 'ROSE' }, blood: { color: '#ff3333', name: 'BLOOD' }, ice: { color: '#b0c4ff', name: 'ICE' }, gold: { color: '#ffd700', name: 'GOLD' }, lime: { color: '#39ff14', name: 'LIME' }, sunset: { color: '#ff6b35', name: 'SUNSET' }, vapor: { color: '#e040fb', name: 'VAPOR' }, ocean: { color: '#006994', name: 'OCEAN' } };
 
 // ═══════════════════════════ DOM ═══════════════════════════
 let DOM = {};
@@ -240,11 +253,11 @@ function connectToAdmin() {
 
     adminDataConn.on('data', data => {
         if (data.type === 'cadena_nacional') {
-            if (!manualTuned) toggleCadenaNacional(data.active);
-            else if (manualTuned && data.active) toggleCadenaNacional(true);
+            // NEVER auto-tune. Only tune if user already pressed Sintonizar
+            if (manualTuned) toggleCadenaNacional(data.active);
         }
         else if (data.type === 'dj_sync') {
-            if (!manualTuned) handleDjSyncRequest(data.active);
+            if (manualTuned) handleDjSyncRequest(data.active);
         }
         else if (data.type === 'tts') playLoquendo(data.text);
         else if (data.type === 'chat') appendChat(data.name, data.text, data.isHost);
@@ -514,19 +527,55 @@ async function callGroqAI(userMessage) {
     }
 }
 
+// Parse AI response for song-change commands
+function parseAiCommands(reply) {
+    let cleanText = reply;
+    let wantChange = false;
+    let targetIndex = -1;
+    
+    if (reply.includes('[CAMBIAR_CANCION]')) {
+        wantChange = true;
+        cleanText = cleanText.replace('[CAMBIAR_CANCION]', '').trim();
+    }
+    const songMatch = reply.match(/\[CANCION:(\d+)\]/);
+    if (songMatch) {
+        targetIndex = parseInt(songMatch[1]) - 1; // convert 1-based to 0-based
+        cleanText = cleanText.replace(songMatch[0], '').trim();
+    }
+    return { cleanText, wantChange, targetIndex };
+}
+
+function aiExecuteSongChange(targetIndex) {
+    if (!playlist.length) return;
+    let idx = targetIndex;
+    if (idx < 0 || idx >= playlist.length) {
+        // Default: next song or shuffle
+        if (isShuffle) idx = Math.floor(Math.random() * playlist.length);
+        else idx = currentIndex < playlist.length - 1 ? currentIndex + 1 : 0;
+    }
+    loadTrack(idx);
+}
+
 async function aiReactToChat(name, text) {
     if (!isAdmin || !isIaLocutor || aiChatCooldown || aiIsTalking) return;
     aiChatCooldown = true;
     setTimeout(() => { aiChatCooldown = false; }, 8000);
 
-    const reply = await callGroqAI(`Un oyente llamado ${name} dice en el chat: "${text}". Responde como locutor de radio en vivo. Se breve.`);
-    if (reply) pushAiSpeech(reply);
+    const reply = await callGroqAI(`Un oyente llamado ${name} dice en el chat: "${text}". Responde como locutor de radio en vivo. Se breve. Si el oyente pide una cancion que esta en la playlist, puedes cambiarla con [CAMBIAR_CANCION][CANCION:numero].`);
+    if (reply) {
+        const { cleanText, wantChange, targetIndex } = parseAiCommands(reply);
+        if (cleanText) pushAiSpeech(cleanText, wantChange ? () => aiExecuteSongChange(targetIndex) : null);
+        else if (wantChange) aiExecuteSongChange(targetIndex);
+    }
 }
 
 async function aiAnnounceSong(prevTrack, nextTrack) {
     if (!isAdmin || !isIaLocutor) return;
     const reply = await callGroqAI(`Acaba de terminar "${prevTrack}" y ahora vas a poner "${nextTrack}". Haz una transicion de radio bien chimba. Se breve, maximo 2 oraciones.`);
-    if (reply) return reply;
+    if (reply) {
+        const { cleanText } = parseAiCommands(reply);
+        return cleanText || reply;
+    }
     return `Eso fue ${prevTrack}. Ahora viene ${nextTrack}, quedate que esto se pone bueno!`;
 }
 
@@ -537,16 +586,30 @@ async function aiPeriodicComment() {
     aiLastSongComment = now;
 
     const recentChat = chatHistory.slice(-5).map(m => `${m.name}: ${m.text}`).join(' | ');
-    const prompt = recentChat
-        ? `Estas en vivo en la radio. El chat reciente dice: "${recentChat}". Haz un comentario corto de locutor sobre lo que pasa en el chat o sobre la cancion que suena. Maximo 1 oracion.`
-        : `Estas en vivo en la radio. Haz un comentario random de locutor bien energetico. Puedes hablar de la cancion que suena, saludar a los oyentes, o decir algo loco. Maximo 1 oracion.`;
+    const elapsed = audioParams.audioElement.currentTime || 0;
+    const duration = audioParams.audioElement.duration || 0;
+    const remaining = duration > 0 ? Math.floor(duration - elapsed) : 0;
+    
+    let prompt;
+    if (recentChat) {
+        prompt = `Estas en vivo en la radio. El chat reciente dice: "${recentChat}". Haz un comentario corto de locutor. Si alguien pide una cancion que esta en la playlist puedes cambiarla. Maximo 1 oracion.`;
+    } else if (remaining > 0 && remaining < 20 && playlist.length > 1) {
+        const nextIdx = isShuffle ? Math.floor(Math.random() * playlist.length) : (currentIndex < playlist.length - 1 ? currentIndex + 1 : 0);
+        prompt = `Faltan ${remaining} segundos para que termine la cancion actual. La siguiente sera "${playlist[nextIdx]?.name}". Haz un comentario anticipando lo que viene. Maximo 1 oracion.`;
+    } else {
+        prompt = `Estas en vivo en la radio. Haz un comentario random de locutor bien energetico. Puedes hablar de la cancion que suena, saludar a los oyentes, o decir algo loco. Maximo 1 oracion. Si quieres cambiar de cancion usa [CAMBIAR_CANCION].`;
+    }
     const reply = await callGroqAI(prompt);
-    if (reply) pushAiSpeech(reply);
+    if (reply) {
+        const { cleanText, wantChange, targetIndex } = parseAiCommands(reply);
+        if (cleanText) pushAiSpeech(cleanText, wantChange ? () => aiExecuteSongChange(targetIndex) : null);
+        else if (wantChange) aiExecuteSongChange(targetIndex);
+    }
 }
 
 function startAiPeriodicLoop() {
     if (aiPeriodicTimer) clearInterval(aiPeriodicTimer);
-    aiPeriodicTimer = setInterval(aiPeriodicComment, 60000);
+    aiPeriodicTimer = setInterval(aiPeriodicComment, 50000);
 }
 
 function stopAiPeriodicLoop() {
@@ -944,6 +1007,45 @@ async function resolveYouTubeAudio(videoId) {
     return null;
 }
 
+// Universal social media URL detector
+function isSocialMediaURL(url) {
+    const patterns = [/facebook\.com/, /fb\.watch/, /instagram\.com/, /tiktok\.com/, /twitter\.com/, /x\.com/, /reddit\.com/, /soundcloud\.com/, /vimeo\.com/, /dailymotion\.com/, /twitch\.tv/, /pinterest\.com/, /tumblr\.com/, /snaptube/];
+    return patterns.some(p => p.test(url));
+}
+
+const COBALT_INSTANCES = [
+    'https://cobalt-api.hyper.lol',
+    'https://api.cobalt.tools'
+];
+
+async function resolveUniversalAudio(url) {
+    for (const instance of COBALT_INSTANCES) {
+        try {
+            setStatus(`EXTRAYENDO VIA ${instance.split('//')[1]}...`, 'loading');
+            const res = await fetch(`${instance}/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ url, audioOnly: true, filenameStyle: 'pretty' }),
+                signal: AbortSignal.timeout(15000)
+            });
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (data.status === 'stream' || data.status === 'redirect') {
+                const audioUrl = data.url || data.audio;
+                if (audioUrl) {
+                    const filename = data.filename || url.split('/').pop().split('?')[0] || 'Audio Extract';
+                    return { url: audioUrl, title: filename.replace(/\.[^/.]+$/, ''), duration: 'URL' };
+                }
+            }
+            if (data.status === 'picker' && data.picker) {
+                const audioItem = data.picker.find(p => p.type === 'audio') || data.picker[0];
+                if (audioItem?.url) return { url: audioItem.url, title: data.filename || 'Audio', duration: 'URL' };
+            }
+        } catch (e) { continue; }
+    }
+    return null;
+}
+
 async function testAndAddURL() {
     const url = DOM.apiInput.value.trim();
     if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) { setStatus('⚠ URL inválida', 'error'); return; }
@@ -961,7 +1063,32 @@ async function testAndAddURL() {
             if (currentIndex === -1) loadTrack(playlist.length - 1);
             setStatus('✓ YOUTUBE AUDIO LOCKED', 'success');
         } else {
-            setStatus('⚠ NO SE PUDO EXTRAER — Intenta otro link', 'error');
+            // Fallback: try Cobalt for YouTube too
+            setStatus('FALLBACK: COBALT EXTRACTOR...', 'loading');
+            const cobaltResult = await resolveUniversalAudio(url);
+            if (cobaltResult) {
+                playlist.push({ name: cobaltResult.title, url: cobaltResult.url, duration: cobaltResult.duration, source: 'url' });
+                renderPlaylist(); updateStats(); saveURLPlaylist(); DOM.apiInput.value = '';
+                if (currentIndex === -1) loadTrack(playlist.length - 1);
+                setStatus('✓ AUDIO EXTRACTED VIA COBALT', 'success');
+            } else {
+                setStatus('⚠ NO SE PUDO EXTRAER — Intenta otro link', 'error');
+            }
+        }
+        return;
+    }
+
+    // Social media / universal extraction
+    if (isSocialMediaURL(url)) {
+        setStatus('🌐 REDES SOCIALES — EXTRAYENDO AUDIO...', 'loading');
+        const result = await resolveUniversalAudio(url);
+        if (result) {
+            playlist.push({ name: result.title, url: result.url, duration: result.duration, source: 'url' });
+            renderPlaylist(); updateStats(); saveURLPlaylist(); DOM.apiInput.value = '';
+            if (currentIndex === -1) loadTrack(playlist.length - 1);
+            setStatus('✓ AUDIO UNIVERSAL LOCKED', 'success');
+        } else {
+            setStatus('⚠ PLATAFORMA NO SOPORTADA — Prueba con el link directo', 'error');
         }
         return;
     }
@@ -971,7 +1098,23 @@ async function testAndAddURL() {
     const testAudio = new Audio(); testAudio.crossOrigin = 'anonymous'; let resolved = false;
     const timeout = setTimeout(() => { if (resolved) return; resolved = true; addURLTrack(url); setStatus('✓ TRACK QUEUED (slow server)', 'success'); }, 6000);
     testAudio.addEventListener('canplay', () => { if (resolved) return; resolved = true; clearTimeout(timeout); addURLTrack(url, testAudio.duration ? `${String(Math.floor(testAudio.duration / 60)).padStart(2, '0')}:${String(Math.floor(testAudio.duration % 60)).padStart(2, '0')}` : 'LIVE'); setStatus('✓ SIGNAL LOCKED — SAVED', 'success'); }, { once: true });
-    testAudio.addEventListener('error', () => { if (resolved) return; resolved = true; clearTimeout(timeout); addURLTrack(url); setStatus('⚠ WEAK SIGNAL — added anyway', 'error'); }, { once: true });
+    testAudio.addEventListener('error', () => {
+        if (resolved) return; resolved = true; clearTimeout(timeout);
+        // Last resort — try Cobalt for unknown URLs too
+        (async () => {
+            setStatus('INTENTANDO EXTRACCIÓN UNIVERSAL...', 'loading');
+            const result = await resolveUniversalAudio(url);
+            if (result) {
+                playlist.push({ name: result.title, url: result.url, duration: result.duration, source: 'url' });
+                renderPlaylist(); updateStats(); saveURLPlaylist(); DOM.apiInput.value = '';
+                if (currentIndex === -1) loadTrack(playlist.length - 1);
+                setStatus('✓ AUDIO EXTRACTED', 'success');
+            } else {
+                addURLTrack(url);
+                setStatus('⚠ WEAK SIGNAL — added anyway', 'error');
+            }
+        })();
+    }, { once: true });
     testAudio.src = url; testAudio.load();
 }
 
@@ -1097,7 +1240,68 @@ function initAudio() {
     audioParams.source.connect(eqFilters[0]);
     for (let i = 0; i < eqFilters.length - 1; i++) eqFilters[i].connect(eqFilters[i + 1]);
 
-    eqFilters[eqFilters.length - 1].connect(musicGain);
+    // ═══ NOSTALGIC RADIO FILTER CHAIN ═══
+    const ctx = audioParams.audioContext;
+    
+    // Bandpass — simulates narrow radio bandwidth
+    radioFilterNodes.bandpass = ctx.createBiquadFilter();
+    radioFilterNodes.bandpass.type = 'bandpass';
+    radioFilterNodes.bandpass.frequency.value = 2000;
+    radioFilterNodes.bandpass.Q.value = 0.7;
+    
+    // Warm lowpass — rolls off harsh highs
+    radioFilterNodes.lowpass = ctx.createBiquadFilter();
+    radioFilterNodes.lowpass.type = 'lowpass';
+    radioFilterNodes.lowpass.frequency.value = 5500;
+    radioFilterNodes.lowpass.Q.value = 0.5;
+    
+    // Highpass — removes sub-bass rumble like old speakers
+    radioFilterNodes.highpass = ctx.createBiquadFilter();
+    radioFilterNodes.highpass.type = 'highpass';
+    radioFilterNodes.highpass.frequency.value = 200;
+    radioFilterNodes.highpass.Q.value = 0.5;
+    
+    // Subtle distortion (waveshaper) — adds warmth/saturation
+    radioFilterNodes.distortion = ctx.createWaveShaper();
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+        const x = (i * 2) / 256 - 1;
+        curve[i] = (Math.PI + 3) * x / (Math.PI + 3 * Math.abs(x));
+    }
+    radioFilterNodes.distortion.curve = curve;
+    radioFilterNodes.distortion.oversample = '2x';
+    
+    // Compressor — evens out dynamics like broadcast radio
+    radioFilterNodes.compressor = ctx.createDynamicsCompressor();
+    radioFilterNodes.compressor.threshold.value = -20;
+    radioFilterNodes.compressor.knee.value = 12;
+    radioFilterNodes.compressor.ratio.value = 4;
+    radioFilterNodes.compressor.attack.value = 0.003;
+    radioFilterNodes.compressor.release.value = 0.15;
+    
+    // Radio filter gain (slightly boost to compensate filter losses)
+    radioFilterNodes.gain = ctx.createGain();
+    radioFilterNodes.gain.gain.value = 1.3;
+    
+    // Bypass node (clean path)
+    radioFilterNodes.bypass = ctx.createGain();
+    radioFilterNodes.bypass.gain.value = radioFilterOn ? 0 : 1;
+    radioFilterNodes.gain.gain.value = radioFilterOn ? 1.3 : 0;
+    
+    // Chain: EQ → [bandpass → highpass → distortion → lowpass → compressor → radioGain] → musicGain
+    //                                                                              OR
+    //        EQ → [bypass] → musicGain
+    eqFilters[eqFilters.length - 1].connect(radioFilterNodes.bandpass);
+    radioFilterNodes.bandpass.connect(radioFilterNodes.highpass);
+    radioFilterNodes.highpass.connect(radioFilterNodes.distortion);
+    radioFilterNodes.distortion.connect(radioFilterNodes.lowpass);
+    radioFilterNodes.lowpass.connect(radioFilterNodes.compressor);
+    radioFilterNodes.compressor.connect(radioFilterNodes.gain);
+    radioFilterNodes.gain.connect(musicGain);
+    
+    eqFilters[eqFilters.length - 1].connect(radioFilterNodes.bypass);
+    radioFilterNodes.bypass.connect(musicGain);
+    
     musicGain.connect(audioParams.panner);
     audioParams.panner.connect(audioParams.analyser);
     audioParams.analyser.connect(audioParams.audioContext.destination);
@@ -1105,6 +1309,31 @@ function initAudio() {
     // Audio also routes to Broadcast Stream Destination
     musicGain.connect(audioParams.streamDest);
     EQ_BANDS.forEach((_, i) => { const s = document.getElementById(`eq-${i}`); if (s && eqFilters[i]) eqFilters[i].gain.value = parseFloat(s.value); });
+}
+
+function toggleRadioFilter(on) {
+    radioFilterOn = on;
+    if (radioFilterNodes.gain && radioFilterNodes.bypass) {
+        const ctx = audioParams.audioContext;
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        if (on) {
+            radioFilterNodes.gain.gain.cancelScheduledValues(now);
+            radioFilterNodes.gain.gain.setValueAtTime(radioFilterNodes.gain.gain.value, now);
+            radioFilterNodes.gain.gain.linearRampToValueAtTime(1.3, now + 0.3);
+            radioFilterNodes.bypass.gain.cancelScheduledValues(now);
+            radioFilterNodes.bypass.gain.setValueAtTime(radioFilterNodes.bypass.gain.value, now);
+            radioFilterNodes.bypass.gain.linearRampToValueAtTime(0, now + 0.3);
+        } else {
+            radioFilterNodes.gain.gain.cancelScheduledValues(now);
+            radioFilterNodes.gain.gain.setValueAtTime(radioFilterNodes.gain.gain.value, now);
+            radioFilterNodes.gain.gain.linearRampToValueAtTime(0, now + 0.3);
+            radioFilterNodes.bypass.gain.cancelScheduledValues(now);
+            radioFilterNodes.bypass.gain.setValueAtTime(radioFilterNodes.bypass.gain.value, now);
+            radioFilterNodes.bypass.gain.linearRampToValueAtTime(1, now + 0.3);
+        }
+    }
+    saveSettings();
 }
 
 function loadTrack(index) {
@@ -1237,8 +1466,8 @@ function setVizMode(mode) { vizMode = mode; if (DOM.vizModes) DOM.vizModes.query
 function setBgMode(mode) { bgMode = mode; if (DOM.bgEffect) { DOM.bgEffect.className = ''; if (mode === 'grid') DOM.bgEffect.className = 'bg-grid'; else if (mode === 'stars') DOM.bgEffect.className = 'bg-stars'; } if (DOM.bgModes) DOM.bgModes.querySelectorAll('.cfg-opt').forEach(b => b.classList.toggle('active', b.dataset.bg === mode)); saveSettings(); }
 function setScanlines(on) { scanlinesOn = on; if (DOM.scanlineOverlay) DOM.scanlineOverlay.style.display = on ? '' : 'none'; if (DOM.cfgScanlines) { DOM.cfgScanlines.textContent = on ? 'ON' : 'OFF'; DOM.cfgScanlines.classList.toggle('on', on); DOM.cfgScanlines.classList.toggle('off', !on); } saveSettings(); }
 function setGlow(level) { glowLevel = level; if (DOM.ambientGlow) DOM.ambientGlow.style.opacity = (level / 100) * .3; if (DOM.cfgGlow) DOM.cfgGlow.value = level; saveSettings(); }
-function saveSettings() { localStorage.setItem('radio_pavi_skin', JSON.stringify({ theme: currentTheme, vizMode, scanlinesOn, glowLevel, bgMode })); }
-function loadSettings() { try { const s = JSON.parse(localStorage.getItem('radio_pavi_skin')); if (!s) return; if (s.theme && THEMES[s.theme]) applyTheme(s.theme); if (s.vizMode) setVizMode(s.vizMode); if (s.bgMode) setBgMode(s.bgMode); if (s.scanlinesOn !== undefined) setScanlines(s.scanlinesOn); if (s.glowLevel !== undefined) setGlow(s.glowLevel); } catch (e) { } }
+function saveSettings() { localStorage.setItem('radio_pavi_skin', JSON.stringify({ theme: currentTheme, vizMode, scanlinesOn, glowLevel, bgMode, radioFilterOn })); }
+function loadSettings() { try { const s = JSON.parse(localStorage.getItem('radio_pavi_skin')); if (!s) return; if (s.theme && THEMES[s.theme]) applyTheme(s.theme); if (s.vizMode) setVizMode(s.vizMode); if (s.bgMode) setBgMode(s.bgMode); if (s.scanlinesOn !== undefined) setScanlines(s.scanlinesOn); if (s.glowLevel !== undefined) setGlow(s.glowLevel); if (s.radioFilterOn !== undefined) radioFilterOn = s.radioFilterOn; } catch (e) { } }
 
 // GLOBAL CHAMELEON
 function extractMetadata(fileOrBlob) { if (!window.jsmediatags) return; window.jsmediatags.read(fileOrBlob, { onSuccess(tag) { const t = tag.tags; if (t.title) { const name = t.title.toUpperCase() + (t.artist ? ' — ' + t.artist.toUpperCase() : ''); setBroadcastTrackName(name); } if (t.picture) { const d = t.picture.data; let b = ''; for (let i = 0; i < d.length; i++)b += String.fromCharCode(d[i]); const u = `data:${t.picture.format};base64,${btoa(b)}`; getPredominantColor(u, rgb => applyChameleonMode(rgb.r, rgb.g, rgb.b, u)); } else { resetChameleon(); } }, onError() { resetChameleon(); } }); }

@@ -151,6 +151,15 @@
                             class="cyber-slider">
                     </div>
                 </div>
+                <div class="cfg-row-pair">
+                    <div class="cfg-group cfg-half">
+                        <div class="cfg-title">📻 RADIO FX</div>
+                        <button class="cfg-switch on" id="cfg-radio-filter" onclick="toggleRadioFilter(!radioFilterOn); this.textContent=radioFilterOn?'ON':'OFF'; this.className='cfg-switch '+(radioFilterOn?'on':'off');">ON</button>
+                    </div>
+                    <div class="cfg-group cfg-half">
+                        <div class="cfg-title" style="font-size:0.45rem; opacity:0.6;">Sonido nostálgico</div>
+                    </div>
+                </div>
                 <div class="cfg-group">
                     <div class="cfg-title">BACKDROP</div>
                     <div class="cfg-btns" id="bg-modes">
@@ -196,14 +205,14 @@
             <div class="panel" id="view-cloud" style="display:none;">
                 <div class="url-bar">
                     <input type="text" id="api-search-input" class="cyber-input"
-                        placeholder="🔗 YouTube URL / audio URL / buscar artista...">
+                        placeholder="🔗 YouTube / Facebook / TikTok / SoundCloud / URL directo...">
                     <button id="btn-add-url" class="url-btn">+URL</button>
                     <button id="btn-api-search" class="url-btn">SCAN</button>
                 </div>
                 <div class="url-status" id="url-status"></div>
                 <div class="playlist-box">
                     <ul class="playlist" id="api-results">
-                        <li class="pl-empty">🎬 Pega un link de YouTube o audio directo y pulsa +URL<br>🔍 O escribe un artista/canción y pulsa SCAN
+                        <li class="pl-empty">🎬 Pega cualquier link (YouTube, Facebook, TikTok, IG, SoundCloud, Twitter) y pulsa +URL<br>🔍 O busca un artista/canción y pulsa SCAN
                         </li>
                     </ul>
                 </div>
@@ -331,7 +340,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="app.js?v=2026.04.14.GROQ"></script>
+    <script src="app.js?v=2026.04.15.RADIOFX"></script>
 </body>
 
 </html>
