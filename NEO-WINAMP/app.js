@@ -501,36 +501,7 @@ function toggleCadenaNacional(active) {
     }
 }
 
-function pushAiSpeech(text, cb = null) {
-    aiSpeechQueue.push({ text, cb });
-    processAiQueue();
-}
-
-function processAiQueue() {
-    if (!isAdmin || aiIsTalking || aiSpeechQueue.length === 0) return;
-    if (!isIaLocutor) {
-        aiSpeechQueue = [];
-        return;
-    }
-    aiIsTalking = true;
-    const task = aiSpeechQueue.shift();
-
-    // Broadcast to all listeners
-    p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send({ type: 'tts', text: task.text }); } catch (e) { } });
-
-    // Also show in chat as PAVI-BOT
-    const botMsg = { type: 'chat', text: task.text, name: '🤖 PAVI-BOT', isHost: true };
-    chatHistory.push(botMsg);
-    if (chatHistory.length > 50) chatHistory.shift();
-    appendChat('🤖 PAVI-BOT', task.text, true);
-    p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send(botMsg); } catch (e) { } });
-
-    playLoquendo(task.text, () => {
-        aiIsTalking = false;
-        if (task.cb) task.cb();
-        setTimeout(processAiQueue, 800);
-    });
-}
+// Consolidated AI Speech logic moved to unified section below (Line 700+)
 
 // ═══════════ GROQ AI BRAIN ENGINE ═══════════
 async function callGroqAI(prompt, useValeria = false) {
@@ -701,8 +672,8 @@ async function aiPeriodicComment() {
     }
 }
 
-let aiSpeechQueue = [];
-let aiIsTalking = false;
+// aiSpeechQueue and aiIsTalking correctly declared globally at top.
+
 
 function pushAiSpeech(text, callback, isValeria = false) {
     aiSpeechQueue.push({ text, callback, isValeria });
@@ -717,7 +688,7 @@ function processAiSpeechQueue() {
         try {
             micStream = audioParams.streamDest.stream;
             startMicVisualizer();
-            document.getElementById('mic-led').classList.add('on');
+            if (DOM.airDot) DOM.airDot.classList.add('on');
             p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send({ type: 'locutor_on' }); } catch (e) { } });
         } catch (e) { }
     }
