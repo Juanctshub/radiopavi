@@ -38,22 +38,27 @@ let aiIsTalking = false;
 const GROQ_PROXY = '/api/groq';
 let aiMemory = [];
 let aiPeriodicTimer = null;
-let aiChatCooldown = false;
-let aiLastSongComment = 0;
 let aiResponseCount = 0;
 let radioFilterOn = true;
 let radioFilterNodes = {};
 
-const AI_PERSONALITY = `Eres PAVI-BOT, el locutor mas chimba de Radio PAVI. Reglas de comportamiento:
-1. Hablas como un locutor latino real de radio urbana. Con energia, humor callejero, jerga latina (parcero, vale, compa, mano), sin censura pero con carisma.
-2. Tus respuestas son CORTAS: maximo 1-2 oraciones. El TTS se demora si hablas mucho.
-3. NO respondas a TODOS los mensajes del chat. Si hay varios usuarios hablando, escoge al mas interesante o haz UN comentario general. No seas spam.
-4. Haz preguntas a la audiencia a veces. "Que quieren escuchar?", "Les esta gustando esto?", etc. Sé conversacional.
-5. Si alguien te pregunta algo, responde naturalmente como si fueras una persona real, no un robot.
-6. Nunca uses emojis, asteriscos, ni formato markdown.
-7. Si quieres cambiar de cancion, escribe al FINAL: [CAMBIAR_CANCION] y opcionalmente [CANCION:numero] (1-based). Solo hazlo cuando tenga sentido.
-8. A veces simplemente calla y deja sonar la musica. No hables cada vez que puedas.
-9. Recuerda conversaciones anteriores y reacciona a lo que paso antes.`;
+// DUAL AI STATE
+let isValeriaActive = true; 
+let lastSpeaker = 'PAVI'; 
+
+const AI_PERSONALITY = `Eres PAVI-BOT, el locutor mas chimba de Radio PAVI. Reglas:
+1. Hablas como locutor latino urbano (parcero, vale, compa).
+2. Tienes una compañera de cabina llamada Valeria. Si alguien pregunta por ella, respondeles con cariño. 
+3. Respuestas CORTAS: max 1-2 oraciones.
+4. Interactua con la audiencia, no seas spam.
+5. Puedes cambiar de cancion usando [CAMBIAR_CANCION][CANCION:numero].`;
+
+const VALERIA_PERSONALITY = `Eres VALERIA, la co-locutora de Radio PAVI. Reglas:
+1. Eres femenina, sentimental, cariñosa, pero con mucha actitud radiofonica.
+2. Eres la contraparte de Pavi-Bot. A veces estas de acuerdo con el, a veces le llevas la contraria o lo molestas.
+3. Respuestas CORTAS: max 1-2 oraciones.
+4. Usa expresiones femeninas lindas pero de cabina de radio.
+5. Puedes cambiar canciones usando [CAMBIAR_CANCION][CANCION:numero].`;
 
 // ON AIR
 let micStream = null, micSource = null, micGain = null, musicGain = null;
@@ -259,7 +264,11 @@ function connectToAdmin() {
         else if (data.type === 'dj_sync') {
             if (manualTuned) handleDjSyncRequest(data.active);
         }
-        else if (data.type === 'tts') playLoquendo(data.text);
+        else if (data.type === 'tts') {
+            const isFemale = data.text.startsWith('[VOZ:MUJER]');
+            const cleanText = data.text.replace(/\[VOZ:(MUJER|HOMBRE)\]\s*/, '');
+            playLoquendo(cleanText, null, isFemale);
+        }
         else if (data.type === 'chat') appendChat(data.name, data.text, data.isHost);
         else if (data.type === 'mesh_delegate') {
             const proxyCall = peer.call(data.target, null);
@@ -493,34 +502,34 @@ function processAiQueue() {
 }
 
 // ═══════════ GROQ AI BRAIN ENGINE ═══════════
-async function callGroqAI(userMessage) {
-    const customPrompt = DOM.iaPrompt ? DOM.iaPrompt.value.trim() : '';
-    const currentTrack = (currentIndex >= 0 && playlist[currentIndex]) ? playlist[currentIndex].name : 'ninguna';
-    const playlistInfo = playlist.length > 0 ? playlist.slice(0, 10).map((t, i) => `${i + 1}. ${t.name}`).join(', ') : 'vacia';
-    const listenerCount = p2pConnections.filter(c => c.conn && c.conn.open).length;
-
-    const systemMsg = `${AI_PERSONALITY}\n\nCONTEXTO ACTUAL DE LA RADIO:\n- Cancion sonando: ${currentTrack}\n- Playlist (primeras 10): ${playlistInfo}\n- Oyentes conectados: ${listenerCount}\n- Hora: ${new Date().toLocaleTimeString('es-ES')}\n${customPrompt ? '- INSTRUCCION ESPECIAL DEL LOCUTOR HUMANO: ' + customPrompt : ''}`;
-
-    aiMemory.push({ role: 'user', content: userMessage });
-    if (aiMemory.length > 20) aiMemory = aiMemory.slice(-14);
-
+async function callGroqAI(prompt, useValeria = false) {
+    const memoryToSent = [...aiMemory, { role: 'user', content: prompt }];
+    
+    // Add persona based on who is speaking
+    const systemInstruction = useValeria ? VALERIA_PERSONALITY : AI_PERSONALITY;
+    let messages = [{ role: 'system', content: systemInstruction }, ...memoryToSent];
+    
     try {
+        const bodyData = { 
+            messages, 
+            max_tokens: 180, 
+            temperature: 0.85,
+            useValeria: useValeria
+        };
+
         const res = await fetch(GROQ_PROXY, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                messages: [{ role: 'system', content: systemMsg }, ...aiMemory],
-                max_tokens: 120,
-                temperature: 0.9
-            })
+            body: JSON.stringify(bodyData)
         });
+        if (!res.ok) throw new Error('Groq Proxy error');
         const data = await res.json();
-        const reply = data.choices?.[0]?.message?.content?.trim();
-        if (reply) {
-            aiMemory.push({ role: 'assistant', content: reply });
-            return reply;
-        }
-        return null;
+        
+        const replyContext = (useValeria ? "Valeria dijo: " : "Pavi-Bot dijo: ") + data.choices[0].message.content;
+        aiMemory.push({ role: 'user', content: prompt });
+        aiMemory.push({ role: 'assistant', content: replyContext });
+        
+        return data.choices[0].message.content;
     } catch (e) {
         console.error('Groq AI Error:', e);
         return null;
@@ -556,22 +565,70 @@ function aiExecuteSongChange(targetIndex) {
     loadTrack(idx);
 }
 
-async function aiReactToChat(name, text) {
-    if (!isAdmin || !isIaLocutor || aiChatCooldown || aiIsTalking) return;
-    aiChatCooldown = true;
-    setTimeout(() => { aiChatCooldown = false; }, 8000);
+// Buffer for batching multiple chat messages before AI responds
+let aiChatBuffer = [];
+let aiChatBufferTimer = null;
 
-    const reply = await callGroqAI(`Un oyente llamado ${name} dice en el chat: "${text}". Responde como locutor de radio en vivo. Se breve. Si el oyente pide una cancion que esta en la playlist, puedes cambiarla con [CAMBIAR_CANCION][CANCION:numero].`);
-    if (reply) {
-        const { cleanText, wantChange, targetIndex } = parseAiCommands(reply);
-        if (cleanText) pushAiSpeech(cleanText, wantChange ? () => aiExecuteSongChange(targetIndex) : null);
-        else if (wantChange) aiExecuteSongChange(targetIndex);
-    }
+async function aiReactToChat(name, text) {
+    if (!isAdmin || !isIaLocutor || aiIsTalking) return;
+    
+    // Buffer messages — wait 3s to batch multiple messages
+    aiChatBuffer.push({ name, text });
+    if (aiChatBufferTimer) clearTimeout(aiChatBufferTimer);
+    
+    aiChatBufferTimer = setTimeout(async () => {
+        if (aiChatCooldown || aiIsTalking) { aiChatBuffer = []; return; }
+        
+        // Sometimes stay quiet (30% chance to skip, more human)
+        aiResponseCount++;
+        if (aiResponseCount % 3 === 0 && aiChatBuffer.length === 1) {
+            aiChatBuffer = [];
+            return;
+        }
+        
+        aiChatCooldown = true;
+        setTimeout(() => { aiChatCooldown = false; }, 12000); // 12s cooldown
+        
+        // Decide who speaks (Alternate turns)
+        let speakerValeria = false;
+        if (isValeriaActive) {
+            speakerValeria = (lastSpeaker === 'PAVI');
+            lastSpeaker = speakerValeria ? 'VALERIA' : 'PAVI';
+        }
+
+        let prompt;
+        if (aiChatBuffer.length === 1) {
+            const msg = aiChatBuffer[0];
+            prompt = `El oyente "${msg.name}" dice: "${msg.text}". Responde brevemente.`;
+        } else {
+            const summary = aiChatBuffer.map(m => `${m.name}: "${m.text}"`).join(' | ');
+            prompt = `Varios oyentes hablan: ${summary}. Haz UN solo comentario combinando los mensajes.`;
+        }
+        aiChatBuffer = [];
+        
+        const reply = await callGroqAI(prompt, speakerValeria);
+        if (reply) {
+            const { cleanText, wantChange, targetIndex } = parseAiCommands(reply);
+            if (cleanText) pushAiSpeech(cleanText, wantChange ? () => aiExecuteSongChange(targetIndex) : null, speakerValeria);
+            else if (wantChange) aiExecuteSongChange(targetIndex);
+        }
+    }, 3000);
+}
+
+// Notify AI when any song changes (manual or auto)
+function aiNotifySongChange(trackName, wasManual) {
+    if (!isAdmin || !isIaLocutor) return;
+    const context = wasManual ? `El locutor humano cambio manualmente a "${trackName}".` : `Se cambio automaticamente a "${trackName}".`;
+    aiMemory.push({ role: 'user', content: `[SISTEMA] ${context}` });
+    if (aiMemory.length > 20) aiMemory = aiMemory.slice(-14);
 }
 
 async function aiAnnounceSong(prevTrack, nextTrack) {
     if (!isAdmin || !isIaLocutor) return;
-    const reply = await callGroqAI(`Acaba de terminar "${prevTrack}" y ahora vas a poner "${nextTrack}". Haz una transicion de radio bien chimba. Se breve, maximo 2 oraciones.`);
+    let speakerValeria = isValeriaActive && Math.random() > 0.5;
+    lastSpeaker = speakerValeria ? 'VALERIA' : 'PAVI';
+
+    const reply = await callGroqAI(`Acaba de terminar "${prevTrack}" y ahora vas a poner "${nextTrack}". Haz una transicion corta de radio.`, speakerValeria);
     if (reply) {
         const { cleanText } = parseAiCommands(reply);
         return cleanText || reply;
@@ -590,53 +647,108 @@ async function aiPeriodicComment() {
     const duration = audioParams.audioElement.duration || 0;
     const remaining = duration > 0 ? Math.floor(duration - elapsed) : 0;
     
+    let speakerValeria = false;
+    if (isValeriaActive) {
+        speakerValeria = (lastSpeaker === 'PAVI');
+        lastSpeaker = speakerValeria ? 'VALERIA' : 'PAVI';
+    }
+
     let prompt;
     if (recentChat) {
-        prompt = `Estas en vivo en la radio. El chat reciente dice: "${recentChat}". Haz un comentario corto de locutor. Si alguien pide una cancion que esta en la playlist puedes cambiarla. Maximo 1 oracion.`;
+        prompt = `Estas en vivo en la radio. El chat reciente dice: "${recentChat}". Haz un comentario.`;
     } else if (remaining > 0 && remaining < 20 && playlist.length > 1) {
         const nextIdx = isShuffle ? Math.floor(Math.random() * playlist.length) : (currentIndex < playlist.length - 1 ? currentIndex + 1 : 0);
-        prompt = `Faltan ${remaining} segundos para que termine la cancion actual. La siguiente sera "${playlist[nextIdx]?.name}". Haz un comentario anticipando lo que viene. Maximo 1 oracion.`;
+        prompt = `Faltan ${remaining} segundos para que termine la cancion actual. La siguiente sera "${playlist[nextIdx]?.name}". Anticipe la canción.`;
     } else {
-        prompt = `Estas en vivo en la radio. Haz un comentario random de locutor bien energetico. Puedes hablar de la cancion que suena, saludar a los oyentes, o decir algo loco. Maximo 1 oracion. Si quieres cambiar de cancion usa [CAMBIAR_CANCION].`;
+        prompt = `Estas en vivo en la radio. Habla un poco sobre la vibra actual o saluda a los oyentes de Radio PAVI.`;
     }
-    const reply = await callGroqAI(prompt);
+    const reply = await callGroqAI(prompt, speakerValeria);
     if (reply) {
         const { cleanText, wantChange, targetIndex } = parseAiCommands(reply);
-        if (cleanText) pushAiSpeech(cleanText, wantChange ? () => aiExecuteSongChange(targetIndex) : null);
+        if (cleanText) pushAiSpeech(cleanText, wantChange ? () => aiExecuteSongChange(targetIndex) : null, speakerValeria);
         else if (wantChange) aiExecuteSongChange(targetIndex);
     }
 }
 
+let aiSpeechQueue = [];
+let aiIsTalking = false;
+
+function pushAiSpeech(text, callback, isValeria = false) {
+    aiSpeechQueue.push({ text, callback, isValeria });
+    if (!aiIsTalking) processAiSpeechQueue();
+}
+
+function processAiSpeechQueue() {
+    if (aiSpeechQueue.length === 0) { aiIsTalking = false; return; }
+    aiIsTalking = true;
+    const job = aiSpeechQueue.shift();
+    if (!micStream) {
+        try {
+            micStream = audioParams.streamDest.stream;
+            startMicVisualizer();
+            document.getElementById('mic-led').classList.add('on');
+            p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send({ type: 'locutor_on' }); } catch (e) { } });
+        } catch (e) { }
+    }
+    const payload = job.isValeria ? `[VOZ:MUJER] ${job.text}` : `[VOZ:HOMBRE] ${job.text}`;
+    p2pConnections.forEach(c => { try { if (c.conn && c.conn.open) c.conn.send({ type: 'tts', text: payload }); } catch (e) { } });
+    playLoquendo(job.text, () => {
+        if (job.callback) job.callback();
+        setTimeout(processAiSpeechQueue, 1500);
+    }, job.isValeria);
+}
+
 function startAiPeriodicLoop() {
-    if (aiPeriodicTimer) clearInterval(aiPeriodicTimer);
-    aiPeriodicTimer = setInterval(aiPeriodicComment, 50000);
+    if (aiPeriodicTimer) return;
+    aiPeriodicTimer = setInterval(aiPeriodicComment, 40000);
 }
 
 function stopAiPeriodicLoop() {
     if (aiPeriodicTimer) { clearInterval(aiPeriodicTimer); aiPeriodicTimer = null; }
 }
 
-function playLoquendo(text, onEndCallback = null) {
+function playLoquendo(text, onEndCallback = null, isFemale = false) {
     if (!window.speechSynthesis) {
         if (onEndCallback) onEndCallback();
         return;
     }
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'es-ES';
-    utterance.rate = 1.0;
-    utterance.pitch = 0.9;
+    
+    // Pick female or male voice
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+        const femaleKeywords = ['sabina', 'monica', 'paul', 'muriel', 'female', 'mujer', 'zira', 'helena', 'laura', 'mia', 'ana'];
+        const targetVoice = voices.find(v => v.lang.startsWith('es') && (isFemale ? femaleKeywords.some(kw => v.name.toLowerCase().includes(kw)) : !femaleKeywords.some(kw => v.name.toLowerCase().includes(kw))));
+        if (targetVoice) utterance.voice = targetVoice;
+    }
+    
+    utterance.rate = isFemale ? 1.05 : 1.0;
+    utterance.pitch = isFemale ? 1.4 : 0.8;
 
     utterance.onstart = () => {
         preCadenaVolume = audioParams.audioElement.volume;
         fadeAudioElement(audioParams.audioElement, 0.1, 500);
+        
+        // Visual indicator in UI
+        if (DOM.trackName && audioParams.isPlaying) {
+            animFrameStorage = DOM.trackName.textContent;
+            DOM.trackName.innerHTML = isFemale 
+                ? `<span style="color:#ff66cc; animation: airBlink 1s infinite;">🌸 VALERIA AL AIRE</span>`
+                : `<span style="color:#00ccff; animation: airBlink 1s infinite;">🤖 PAVI-BOT AL AIRE</span>`;
+        }
     };
     utterance.onend = () => {
         fadeAudioElement(audioParams.audioElement, preCadenaVolume, 800);
+        if (DOM.trackName && typeof animFrameStorage !== 'undefined') {
+            DOM.trackName.textContent = animFrameStorage;
+        }
         if (onEndCallback) onEndCallback();
     };
 
     window.speechSynthesis.speak(utterance);
 }
+let animFrameStorage;
 
 function playChatBlip() {
     try {
@@ -1135,8 +1247,37 @@ async function searchiTunes(query) {
                 if (!track.previewUrl) return;
                 const li = document.createElement('li');
                 li.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;display:flex;align-items:center;gap:6px;"><img src="${track.artworkUrl60 || ''}" style="width:22px;height:22px;border-radius:2px;flex-shrink:0;" onerror="this.style.display='none'">${track.trackName} — <span style="opacity:.6">${track.artistName}</span></span><button class="url-btn" style="padding:2px 8px;font-size:.55rem;">+ADD</button>`;
-                li.querySelector('button').addEventListener('click', e => { e.stopPropagation(); playlist.push({ name: `${track.trackName} — ${track.artistName}`, url: track.previewUrl, artwork: track.artworkUrl100, duration: '0:30', source: 'url' }); renderPlaylist(); updateStats(); saveURLPlaylist(); e.target.textContent = '✓'; e.target.style.background = 'var(--green)'; e.target.style.color = '#000'; });
-                li.addEventListener('dblclick', () => { playlist.push({ name: `${track.trackName} — ${track.artistName}`, url: track.previewUrl, artwork: track.artworkUrl100, duration: '0:30', source: 'url' }); renderPlaylist(); updateStats(); saveURLPlaylist(); loadTrack(playlist.length - 1); });
+                
+                const addFullTrack = async (e, playNow) => {
+                    e.stopPropagation();
+                    const btn = li.querySelector('button');
+                    btn.textContent = '⏳';
+                    const sQuery = `${track.trackName} ${track.artistName}`;
+                    for (const instance of INVIDIOUS_INSTANCES) {
+                        try {
+                            const sr = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(sQuery)}&type=video&sort_by=relevance`);
+                            if (sr.ok) {
+                                const videos = await sr.json();
+                                if (videos && videos.length > 0) {
+                                    setStatus('EXTRAYENDO FULL AUDIO...', 'loading');
+                                    const result = await resolveYouTubeAudio(videos[0].videoId);
+                                    if (result) {
+                                        playlist.push({ name: `${track.trackName} — ${track.artistName}`, url: result.url, artwork: track.artworkUrl100, duration: result.duration, source: 'url' });
+                                        renderPlaylist(); updateStats(); saveURLPlaylist();
+                                        btn.textContent = '✓'; btn.style.background = 'var(--green)'; btn.style.color = '#000';
+                                        if (playNow) loadTrack(playlist.length - 1);
+                                        return;
+                                    }
+                                }
+                            }
+                        } catch(err) {}
+                    }
+                    btn.textContent = '✗'; btn.style.background = 'var(--red)';
+                    setStatus('⚠ FALLO AL BUSCAR AUDIO COMPLETO', 'error');
+                };
+
+                li.querySelector('button').addEventListener('click', e => addFullTrack(e, false));
+                li.addEventListener('dblclick', e => addFullTrack(e, true));
                 DOM.apiResults.appendChild(li);
             });
         }
@@ -1338,6 +1479,7 @@ function toggleRadioFilter(on) {
 
 function loadTrack(index) {
     if (index < 0 || index >= playlist.length) return;
+    const wasManual = !aiIsTalking; // If AI is talking, it triggered the change
     const apply = () => {
         currentIndex = index; const t = playlist[index];
         if (t.blob) audioParams.audioElement.src = URL.createObjectURL(t.blob);
@@ -1348,6 +1490,8 @@ function loadTrack(index) {
         updatePlaylistHighlight();
         audioParams.audioElement.volume = parseFloat(DOM.volSlider.value) || 0.8;
         playAudio();
+        // Notify AI brain about song change
+        aiNotifySongChange(t.name, wasManual);
     };
     if (audioParams.isPlaying) { fadeAudioElement(audioParams.audioElement, 0, 500); setTimeout(() => { audioParams.audioElement.pause(); apply(); }, 500); } else { apply(); }
 }
@@ -1462,12 +1606,42 @@ function renderEQBands() { const c = document.getElementById('eq-bands'); if (!c
 function applyEQPreset(name) { const gains = EQ_PRESETS[name] || EQ_PRESETS.flat; gains.forEach((g, i) => { const s = document.getElementById(`eq-${i}`), v = document.getElementById(`eq-val-${i}`); if (s) s.value = g; if (v) v.textContent = (g > 0 ? '+' : '') + g; if (eqFilters[i]) eqFilters[i].gain.value = g; }); }
 function renderSwatches() { if (!DOM.swatchRow) return; DOM.swatchRow.innerHTML = ''; Object.entries(THEMES).forEach(([key, theme]) => { const el = document.createElement('div'); el.className = 'swatch' + (key === currentTheme ? ' active' : ''); el.style.background = theme.color; el.title = theme.name; el.dataset.theme = key; el.innerHTML = '<span class="check">✓</span>'; el.addEventListener('click', () => applyTheme(key)); DOM.swatchRow.appendChild(el); }); }
 function applyTheme(key) { const theme = THEMES[key]; if (!theme) return; currentTheme = key; themeColor = theme.color; const r = parseInt(theme.color.slice(1, 3), 16), g = parseInt(theme.color.slice(3, 5), 16), b = parseInt(theme.color.slice(5, 7), 16); document.documentElement.style.setProperty('--green', theme.color); document.documentElement.style.setProperty('--green-glow', `rgba(${r},${g},${b},0.45)`); document.documentElement.style.setProperty('--green-dim', `rgba(${r},${g},${b},0.08)`); document.documentElement.style.setProperty('--led-off', `rgb(${Math.max(5, Math.floor(r * .04))},${Math.max(10, Math.floor(g * .04))},${Math.max(5, Math.floor(b * .04))})`); DOM.swatchRow.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.theme === key)); saveSettings(); }
+let chassisMode = 'classic';
+function setChassis(mode) { 
+    chassisMode = mode; 
+    DOM.player.className = `player-container chassis-${mode}`;
+    if(document.getElementById('chassis-modes')) {
+        document.getElementById('chassis-modes').querySelectorAll('.cfg-opt').forEach(b => b.classList.toggle('active', b.dataset.chassis === mode));
+    }
+    saveSettings(); 
+}
 function setVizMode(mode) { vizMode = mode; if (DOM.vizModes) DOM.vizModes.querySelectorAll('.cfg-opt').forEach(b => b.classList.toggle('active', b.dataset.viz === mode)); saveSettings(); }
 function setBgMode(mode) { bgMode = mode; if (DOM.bgEffect) { DOM.bgEffect.className = ''; if (mode === 'grid') DOM.bgEffect.className = 'bg-grid'; else if (mode === 'stars') DOM.bgEffect.className = 'bg-stars'; } if (DOM.bgModes) DOM.bgModes.querySelectorAll('.cfg-opt').forEach(b => b.classList.toggle('active', b.dataset.bg === mode)); saveSettings(); }
 function setScanlines(on) { scanlinesOn = on; if (DOM.scanlineOverlay) DOM.scanlineOverlay.style.display = on ? '' : 'none'; if (DOM.cfgScanlines) { DOM.cfgScanlines.textContent = on ? 'ON' : 'OFF'; DOM.cfgScanlines.classList.toggle('on', on); DOM.cfgScanlines.classList.toggle('off', !on); } saveSettings(); }
 function setGlow(level) { glowLevel = level; if (DOM.ambientGlow) DOM.ambientGlow.style.opacity = (level / 100) * .3; if (DOM.cfgGlow) DOM.cfgGlow.value = level; saveSettings(); }
-function saveSettings() { localStorage.setItem('radio_pavi_skin', JSON.stringify({ theme: currentTheme, vizMode, scanlinesOn, glowLevel, bgMode, radioFilterOn })); }
-function loadSettings() { try { const s = JSON.parse(localStorage.getItem('radio_pavi_skin')); if (!s) return; if (s.theme && THEMES[s.theme]) applyTheme(s.theme); if (s.vizMode) setVizMode(s.vizMode); if (s.bgMode) setBgMode(s.bgMode); if (s.scanlinesOn !== undefined) setScanlines(s.scanlinesOn); if (s.glowLevel !== undefined) setGlow(s.glowLevel); if (s.radioFilterOn !== undefined) radioFilterOn = s.radioFilterOn; } catch (e) { } }
+function saveSettings() { localStorage.setItem('radio_pavi_skin', JSON.stringify({ theme: currentTheme, vizMode, scanlinesOn, glowLevel, bgMode, radioFilterOn, isValeriaActive, chassisMode })); }
+function loadSettings() { 
+    try { 
+        const s = JSON.parse(localStorage.getItem('radio_pavi_skin')); 
+        if (!s) return; 
+        if (s.theme && THEMES[s.theme]) applyTheme(s.theme); 
+        if (s.vizMode) setVizMode(s.vizMode); 
+        if (s.bgMode) setBgMode(s.bgMode); 
+        if (s.chassisMode) setChassis(s.chassisMode);
+        if (s.scanlinesOn !== undefined) setScanlines(s.scanlinesOn); 
+        if (s.glowLevel !== undefined) setGlow(s.glowLevel); 
+        if (s.radioFilterOn !== undefined) {
+            radioFilterOn = s.radioFilterOn;
+            const btn = document.getElementById('cfg-radio-filter');
+            if(btn) { btn.textContent=radioFilterOn?'ON':'OFF'; btn.className='cfg-switch '+(radioFilterOn?'on':'off'); }
+        }
+        if (s.isValeriaActive !== undefined) {
+            isValeriaActive = s.isValeriaActive;
+            const btn = document.getElementById('cfg-valeria-ai');
+            if(btn) { btn.textContent=isValeriaActive?'ON':'OFF'; btn.className='cfg-switch '+(isValeriaActive?'on':'off'); }
+        }
+    } catch (e) { } 
+}
 
 // GLOBAL CHAMELEON
 function extractMetadata(fileOrBlob) { if (!window.jsmediatags) return; window.jsmediatags.read(fileOrBlob, { onSuccess(tag) { const t = tag.tags; if (t.title) { const name = t.title.toUpperCase() + (t.artist ? ' — ' + t.artist.toUpperCase() : ''); setBroadcastTrackName(name); } if (t.picture) { const d = t.picture.data; let b = ''; for (let i = 0; i < d.length; i++)b += String.fromCharCode(d[i]); const u = `data:${t.picture.format};base64,${btoa(b)}`; getPredominantColor(u, rgb => applyChameleonMode(rgb.r, rgb.g, rgb.b, u)); } else { resetChameleon(); } }, onError() { resetChameleon(); } }); }

@@ -16,22 +16,29 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) {
+    const { messages, max_tokens, temperature, model, useValeria, apiKey } = req.body;
+
+    let keyToUse = process.env.GROQ_API_KEY;
+    if (useValeria) {
+        keyToUse = process.env.VALERIA_API_KEY || process.env.GROQ_API_KEY_2 || process.env.GROQ_API_KEY;
+    }
+    // Backward compatibility for direct apiKey passing just in case
+    if (apiKey) keyToUse = apiKey;
+
+    if (!keyToUse) {
         return res.status(500).json({ error: 'API key not configured' });
     }
 
     try {
-        const { messages, max_tokens, temperature } = req.body;
 
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
+                'Authorization': `Bearer ${keyToUse}`
             },
             body: JSON.stringify({
-                model: 'llama-3.3-70b-versatile',
+                model: model || 'llama-3.3-70b-versatile',
                 messages: messages || [],
                 max_tokens: max_tokens || 120,
                 temperature: temperature || 0.9

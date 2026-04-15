@@ -157,7 +157,16 @@
                         <button class="cfg-switch on" id="cfg-radio-filter" onclick="toggleRadioFilter(!radioFilterOn); this.textContent=radioFilterOn?'ON':'OFF'; this.className='cfg-switch '+(radioFilterOn?'on':'off');">ON</button>
                     </div>
                     <div class="cfg-group cfg-half">
-                        <div class="cfg-title" style="font-size:0.45rem; opacity:0.6;">Sonido nostálgico</div>
+                        <div class="cfg-title">VALERIA AI</div>
+                        <button class="cfg-switch on" id="cfg-valeria-ai" onclick="isValeriaActive=!isValeriaActive; this.textContent=isValeriaActive?'ON':'OFF'; this.className='cfg-switch '+(isValeriaActive?'on':'off');">ON</button>
+                    </div>
+                </div>
+                <div class="cfg-group">
+                    <div class="cfg-title">RADIO CHASSIS</div>
+                    <div class="cfg-btns" id="chassis-modes">
+                        <button class="cfg-opt active" data-chassis="classic" onclick="setChassis('classic')">CLASSIC</button>
+                        <button class="cfg-opt" data-chassis="boombox" onclick="setChassis('boombox')">BOOMBOX</button>
+                        <button class="cfg-opt" data-chassis="glass" onclick="setChassis('glass')">GLASS</button>
                     </div>
                 </div>
                 <div class="cfg-group">
