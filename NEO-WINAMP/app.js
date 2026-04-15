@@ -116,15 +116,42 @@ function queryDOM() {
 function flash(btn) { if (!btn) return; btn.classList.remove('flash'); void btn.offsetWidth; btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 250); }
 
 // ═══════════════════════════ INITIALIZATION ═══════════════════════════
+window.onerror = function(msg, url, line) {
+    console.error("GLOBAL ERROR:", msg, "AT", line);
+    // Auto-rescue splash screen
+    const splo = document.getElementById('splash');
+    if (splo) splo.remove();
+    const plo = document.getElementById('player');
+    if (plo) plo.style.opacity = '1';
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
+    // Immediate Safety: if script takes too long, remove splash anyway
+    setTimeout(() => {
+        const splo = document.getElementById('splash');
+        if (splo && !splo.classList.contains('done')) {
+            console.warn("Forcing splash removal...");
+            splo.remove();
+            const plo = document.getElementById('player');
+            if (plo) plo.style.opacity = '1';
+        }
+    }, 6000);
+
     try {
-        queryDOM(); resizeCanvases(); drawIdleScreen(); renderSwatches(); loadSettings();
+        queryDOM(); 
+        if (!DOM.player) throw new Error("CRITICAL: Player container not found!");
+        
+        resizeCanvases(); 
+        drawIdleScreen(); 
+        renderSwatches(); 
+        loadSettings();
 
         // Hide admin-only elements safely
         document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
 
-        DOM.splash.style.display = 'flex';
+        if (DOM.splash) DOM.splash.style.display = 'flex';
         runSplash();
+        
         await openDB();
         await loadPersistedPlaylist();
         renderEQBands();
@@ -133,10 +160,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Default: Initialize as a regular client (Listener capability)
         initClientPeer();
     } catch (e) {
-        alert("CRASH: " + e.message + "\nLine: " + e.lineNumber);
-        console.error(e);
-        // Fallback to remove splash
-        setTimeout(() => { document.getElementById('splash').remove(); document.getElementById('player').style.opacity = '1'; }, 1000);
+        console.error("INIT_CRASH:", e);
+        // Fallback to remove splash safely
+        setTimeout(() => {
+            if (DOM.splash) DOM.splash.remove();
+            if (DOM.player) DOM.player.style.opacity = '1';
+        }, 1200);
     }
 });
 
@@ -1607,11 +1636,22 @@ function stopMicMeter() { if (micMeterFrame) cancelAnimationFrame(micMeterFrame)
 function renderEQBands() { const c = document.getElementById('eq-bands'); if (!c) return; c.innerHTML = ''; EQ_LABELS.forEach((l, i) => { const d = document.createElement('div'); d.className = 'eq-band'; d.innerHTML = `<span class="eq-val" id="eq-val-${i}">0</span><input type="range" class="eq-slider" id="eq-${i}" orient="vertical" min="-12" max="12" value="0" step="1"><span class="eq-lbl">${l}</span>`; c.appendChild(d); d.querySelector('.eq-slider').addEventListener('input', function () { const g = parseFloat(this.value); document.getElementById(`eq-val-${i}`).textContent = (g > 0 ? '+' : '') + g; if (eqFilters[i]) eqFilters[i].gain.value = g; }); }); document.querySelectorAll('.eq-preset').forEach(btn => { btn.addEventListener('click', () => applyEQPreset(btn.dataset.preset)); }); }
 function applyEQPreset(name) { const gains = EQ_PRESETS[name] || EQ_PRESETS.flat; gains.forEach((g, i) => { const s = document.getElementById(`eq-${i}`), v = document.getElementById(`eq-val-${i}`); if (s) s.value = g; if (v) v.textContent = (g > 0 ? '+' : '') + g; if (eqFilters[i]) eqFilters[i].gain.value = g; }); }
 function renderSwatches() { if (!DOM.swatchRow) return; DOM.swatchRow.innerHTML = ''; Object.entries(THEMES).forEach(([key, theme]) => { const el = document.createElement('div'); el.className = 'swatch' + (key === currentTheme ? ' active' : ''); el.style.background = theme.color; el.title = theme.name; el.dataset.theme = key; el.innerHTML = '<span class="check">✓</span>'; el.addEventListener('click', () => applyTheme(key)); DOM.swatchRow.appendChild(el); }); }
-function applyTheme(key) { const theme = THEMES[key]; if (!theme) return; currentTheme = key; themeColor = theme.color; const r = parseInt(theme.color.slice(1, 3), 16), g = parseInt(theme.color.slice(3, 5), 16), b = parseInt(theme.color.slice(5, 7), 16); document.documentElement.style.setProperty('--green', theme.color); document.documentElement.style.setProperty('--green-glow', `rgba(${r},${g},${b},0.45)`); document.documentElement.style.setProperty('--green-dim', `rgba(${r},${g},${b},0.08)`); document.documentElement.style.setProperty('--led-off', `rgb(${Math.max(5, Math.floor(r * .04))},${Math.max(10, Math.floor(g * .04))},${Math.max(5, Math.floor(b * .04))})`); DOM.swatchRow.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.theme === key)); saveSettings(); }
+function applyTheme(key) { 
+    const theme = THEMES[key]; if (!theme) return; currentTheme = key; themeColor = theme.color; 
+    const r = parseInt(theme.color.slice(1, 3), 16), g = parseInt(theme.color.slice(3, 5), 16), b = parseInt(theme.color.slice(5, 7), 16); 
+    document.documentElement.style.setProperty('--green', theme.color); 
+    document.documentElement.style.setProperty('--green-glow', `rgba(${r},${g},${b},0.45)`); 
+    document.documentElement.style.setProperty('--green-dim', `rgba(${r},${g},${b},0.08)`); 
+    document.documentElement.style.setProperty('--led-off', `rgb(${Math.max(5, Math.floor(r * .04))},${Math.max(10, Math.floor(g * .04))},${Math.max(5, Math.floor(b * .04))})`); 
+    if (DOM.swatchRow) {
+        DOM.swatchRow.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.theme === key)); 
+    }
+    saveSettings(); 
+}
 let chassisMode = 'classic';
 function setChassis(mode) { 
     chassisMode = mode; 
-    DOM.player.className = `player-container chassis-${mode}`;
+    if (DOM.player) DOM.player.className = `player-container chassis-${mode}`;
     if(document.getElementById('chassis-modes')) {
         document.getElementById('chassis-modes').querySelectorAll('.cfg-opt').forEach(b => b.classList.toggle('active', b.dataset.chassis === mode));
     }
